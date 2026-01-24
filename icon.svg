@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<!-- 背景：深みのある鉄道ブルーのグラデーション風（単色） -->
+<rect width="100" height="100" rx="20" fill="#1e3a8a"/>
+
+<!-- 下部の線路：安定感と奥行き -->
+
+<rect x="15" y="85" width="70" height="3" rx="1.5" fill="#475569"/>
+<rect x="25" y="88" width="50" height="2" rx="1" fill="#334155" opacity="0.6"/>
+
+<!-- 電車の車体：より詳細なフォルム -->
+
+<!-- 車体下部（スカート） -->
+
+<path d="M22 75 L78 75 L75 82 L25 82 Z" fill="#334155"/>
+
+<!-- 車体メイン -->
+
+<rect x="22" y="30" width="56" height="48" rx="8" fill="#f8fafc"/>
+<rect x="22" y="55" width="56" height="15" fill="#2563eb"/> <!-- 車体ライン -->
+
+<!-- フロントガラス：光沢と奥行き -->
+
+<rect x="28" y="35" width="44" height="22" rx="3" fill="#1e293b"/>
+<rect x="30" y="37" width="20" height="10" rx="1" fill="#475569" opacity="0.4"/> <!-- ガラスの反射 -->
+
+<!-- パンタグラフ：鉄道らしさの強調 -->
+
+<path d="M40 30 L35 20 L50 12 L65 20 L60 30" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linejoin="round"/>
+<line x1="45" y1="12" x2="55" y2="12" stroke="#64748b" stroke-width="2"/>
+
+<!-- ライト：よりリアルな発光表現 -->
+
+<circle cx="35" cy="65" r="4" fill="#fde047"/>
+<circle cx="35" cy="65" r="2" fill="white"/>
+<circle cx="65" cy="65" r="4" fill="#fde047"/>
+<circle cx="65" cy="65" r="2" fill="white"/>
+
+<!-- アラームベル：電車の上に重なる印象的な配置 -->
+
+<g transform="translate(55, 10) scale(0.45)">
+<!-- ベル本体 -->
+<path d="M40 10 A30 30 0 0 1 70 40 L75 60 L5 60 L10 40 A30 30 0 0 1 40 10" fill="#fbbf24" stroke="#b45309" stroke-width="2"/>
+<!-- ベルの内部と振り子 -->
+<circle cx="40" cy="62" r="6" fill="#d97706"/>
+<!-- 上部の飾り -->
+<circle cx="40" cy="8" r="4" fill="#f59e0b"/>
+<!-- 振動波（アニメーション的表現） -->
+<path d="M5 30 Q-15 40 5 50" fill="none" stroke="#fbbf24" stroke-width="3" stroke-linecap="round">
+<animate attributeName="opacity" values="0;1;0" dur="1.5s" repeatCount="indefinite" />
+</path>
+<path d="M75 30 Q95 40 75 50" fill="none" stroke="#fbbf24" stroke-width="3" stroke-linecap="round">
+<animate attributeName="opacity" values="0;1;0" dur="1.5s" repeatCount="indefinite" begin="0.75s" />
+</path>
+</g>
+
+<!-- マイクインジケーター：ハイライト付き -->
+
+<rect x="44" y="68" width="12" height="18" rx="6" fill="#ef4444" stroke="white" stroke-width="1.5"/>
+<rect x="47" y="71" width="3" height="6" rx="1.5" fill="white" opacity="0.4"/>
+</svg>
