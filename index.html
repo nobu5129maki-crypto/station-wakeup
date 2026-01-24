@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- HTMLのhead部分をこのように修正してください -->
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon.svg">
+    <title>駅到着アラーム - アナウンス検知</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .vibrate-active {
+            animation: shake 0.5s infinite;
+            background-color: #ef4444 !important;
+        }
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center p-6 font-sans">
+
+    <div class="max-w-md w-full space-y-8 mt-10">
+        <header class="text-center">
+            <h1 class="text-3xl font-bold text-blue-400">Station WakeUp</h1>
+            <p class="text-slate-400 mt-2 text-sm">車内アナウンスを聞き取り、目的地の手前で起こします</p>
+        </header>
+
+        <!-- Status Display -->
+        <div id="debugStatus" class="bg-slate-800 p-3 rounded-lg text-xs font-mono text-slate-400 border border-slate-700">
+            System: <span id="systemMsg" class="text-yellow-500">Initializing...</span>
+        </div>
+
+        <!-- Setting Section -->
+        <div class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700">
+            <div class="mb-6">
+                <label class="block text-sm font-medium mb-2 text-blue-300">検知する駅名 (例: 品川、次、まもなく)</label>
+                <input type="text" id="targetStation" placeholder="駅名を入力" 
+                    class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg">
+                <p class="text-xs text-slate-500 mt-2">※「次は」「まもなく」などを入れると検知しやすくなります</p>
+            </div>
+
+            <button id="toggleBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 text-lg shadow-lg">
+                <span id="statusIcon">🎤</span>
+                <span id="statusText">監視を開始する</span>
+            </button>
+        </div>
+
+        <!-- Transcript Log -->
+        <div class="bg-black/30 p-4 rounded-xl border border-slate-700 h-40 flex flex-col">
+            <h2 class="text-xs uppercase tracking-widest text-slate-500 mb-2 font-bold">聞き取り中の音声データ</h2>
+            <div id="transcriptLog" class="overflow-y-auto flex-1 text-sm text-slate-300 space-y-1 font-mono">
+                <p class="italic text-slate-500 text-center mt-4">開始ボタンを押すと聞き取りを開始します...</p>
+            </div>
+        </div>
+
+        <!-- Alarm Modal -->
+        <div id="alarmPanel" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+            <div id="alarmBox" class="bg-slate-800 w-full max-w-sm p-8 rounded-3xl text-center border-4 border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.5)]">
+                <div class="text-6xl mb-4">🔔</div>
+                <h2 class="text-2xl font-bold text-red-500 mb-2">駅に到着します！</h2>
+                <p id="matchText" class="text-xl mb-6 font-semibold"></p>
+                <button id="stopAlarmBtn" class="w-full bg-red-600 py-4 rounded-xl font-bold text-xl hover:bg-red-500 active:scale-95 transition-transform">
+                    アラームを止める
+                </button>
+            </div>
+        </div>
+
+        <footer class="text-center text-slate-500 text-xs pb-10">
+            <p>※ バイブレーションが作動しない場合は、一度画面をタップしてください。</p>
+            <p>※ iPhone(iOS)のSafariではマナーモード中にバイブが制限される場合があります。</p>
+        </footer>
+    </div>
+
+    <script>
+        const targetInput = document.getElementById('targetStation');
+        const toggleBtn = document.getElementById('toggleBtn');
+        const statusText = document.getElementById('statusText');
+        const systemMsg = document.getElementById('systemMsg');
+        const transcriptLog = document.getElementById('transcriptLog');
+        const alarmPanel = document.getElementById('alarmPanel');
+        const alarmBox = document.getElementById('alarmBox');
+        const matchText = document.getElementById('matchText');
+        const stopAlarmBtn = document.getElementById('stopAlarmBtn');
+
+        let isListening = false;
+        let recognition = null;
+        let restartTimer = null;
+        let vibrationInterval = null;
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            systemMsg.textContent = "Ready";
+            systemMsg.className = "text-green-500";
+
+            recognition.onstart = () => {
+                systemMsg.textContent = "Listening...";
+                systemMsg.className = "text-blue-400";
+            };
+
+            recognition.onresult = (event) => {
+                let currentTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    currentTranscript += event.results[i][0].transcript;
+                }
+                
+                if (currentTranscript.trim()) {
+                    updateLog(currentTranscript, event.results[event.resultIndex].isFinal);
+                    // 確定を待たず、中間結果でもキーワードが含まれていれば即座にチェック
+                    checkMatch(currentTranscript);
+                }
+            };
+
+            recognition.onend = () => {
+                if (isListening) {
+                    systemMsg.textContent = "Auto-Restarting...";
+                    systemMsg.className = "text-yellow-500";
+                    clearTimeout(restartTimer);
+                    restartTimer = setTimeout(() => {
+                        if (isListening) {
+                            try { recognition.start(); } catch(e) {}
+                        }
+                    }, 300);
+                } else {
+                    systemMsg.textContent = "Stopped";
+                    systemMsg.className = "text-slate-400";
+                }
+            };
+
+            recognition.onerror = (event) => {
+                if (event.error !== 'no-speech') {
+                    systemMsg.textContent = `Error: ${event.error}`;
+                    console.warn('Speech Recognition Error:', event.error);
+                }
+            };
+        }
+
+        function updateLog(text, isFinal) {
+            const firstChild = transcriptLog.firstChild;
+            if (firstChild && !firstChild.dataset.final) {
+                firstChild.textContent = `> ${text}`;
+                if (isFinal) {
+                    firstChild.dataset.final = "true";
+                    firstChild.classList.replace('text-slate-400', 'text-slate-200');
+                }
+            } else {
+                const p = document.createElement('p');
+                p.textContent = `> ${text}`;
+                p.className = isFinal ? 'text-slate-200 border-l-2 border-blue-500 pl-2' : 'text-slate-400 border-l-2 border-slate-600 pl-2';
+                if (isFinal) p.dataset.final = "true";
+                transcriptLog.prepend(p);
+            }
+            if (transcriptLog.childNodes.length > 25) transcriptLog.removeChild(transcriptLog.lastChild);
+        }
+
+        function checkMatch(text) {
+            const target = targetInput.value.trim();
+            if (!target || !isListening) return;
+            if (text.includes(target)) {
+                triggerAlarm(text);
+            }
+        }
+
+        function triggerAlarm(detectedText) {
+            // アラーム検知時は監視を止める
+            isListening = false;
+            if (recognition) recognition.stop();
+            
+            matchText.textContent = `「${detectedText}」を検知しました`;
+            alarmPanel.classList.remove('hidden');
+            alarmBox.classList.add('vibrate-active');
+
+            // バイブレーション開始
+            startVibration();
+            
+            // 視覚的なフィードバック
+            statusText.textContent = '検知しました！';
+            toggleBtn.classList.replace('bg-red-600', 'bg-green-600');
+            toggleBtn.classList.remove('pulse');
+        }
+
+        function startVibration() {
+            if ("vibrate" in navigator) {
+                // 初回起動
+                navigator.vibrate([1000, 500, 1000, 500, 1000]);
+                // 繰り返し実行（止めるまで）
+                vibrationInterval = setInterval(() => {
+                    navigator.vibrate([1000, 500, 1000]);
+                }, 3000);
+            }
+        }
+
+        function stopVibration() {
+            if (vibrationInterval) {
+                clearInterval(vibrationInterval);
+                vibrationInterval = null;
+            }
+            if ("vibrate" in navigator) {
+                navigator.vibrate(0);
+            }
+        }
+
+        function startListening() {
+            if (!recognition) return;
+            if (!targetInput.value.trim()) {
+                alert('先に駅名を入力してください。');
+                return;
+            }
+
+            // ユーザーのアクション（クリック）でバイブの権限をアクティブにするためのダミー
+            if ("vibrate" in navigator) navigator.vibrate(10);
+
+            isListening = true;
+            transcriptLog.innerHTML = '';
+            try {
+                recognition.start();
+            } catch (e) {}
+            statusText.textContent = '監視中...';
+            toggleBtn.classList.replace('bg-blue-600', 'bg-red-600');
+            toggleBtn.classList.add('pulse');
+        }
+
+        function stopListening() {
+            isListening = false;
+            clearTimeout(restartTimer);
+            if (recognition) recognition.stop();
+            stopVibration();
+            statusText.textContent = '監視を開始する';
+            toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
+            toggleBtn.classList.replace('bg-green-600', 'bg-blue-600');
+            toggleBtn.classList.remove('pulse');
+        }
+
+        toggleBtn.addEventListener('click', () => {
+            if (isListening || alarmBox.classList.contains('vibrate-active')) {
+                stopListening();
+            } else {
+                startListening();
+            }
+        });
+
+        stopAlarmBtn.addEventListener('click', () => {
+            alarmPanel.classList.add('hidden');
+            alarmBox.classList.remove('vibrate-active');
+            stopListening();
+        });
+    </script>
+</body>
+</html>
