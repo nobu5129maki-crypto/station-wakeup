@@ -50,6 +50,10 @@
                 <input type="text" id="targetStation" placeholder="駅名を入力" 
                     class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg">
                 <p class="text-xs text-slate-500 mt-2">※「次は」「まもなく」などを入れると検知しやすくなります</p>
+                <div class="mt-3">
+                    <p id="savedLabel" class="text-xs text-slate-500 mb-2 hidden">よく使う駅（タップで選択 / ×で削除）</p>
+                    <div id="savedStationsWrap" class="flex flex-wrap gap-2"></div>
+                </div>
             </div>
 
             <button id="toggleBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 text-lg shadow-lg">
@@ -87,6 +91,66 @@
     <script>
         const targetInput = document.getElementById('targetStation');
         const toggleBtn = document.getElementById('toggleBtn');
+        const savedStationsWrap = document.getElementById('savedStationsWrap');
+        const savedLabel = document.getElementById('savedLabel');
+
+        const STORAGE_KEY = 'stationWakeUp_savedStations';
+        const MAX_SAVED = 15;
+
+        function loadSavedStations() {
+            try {
+                const json = localStorage.getItem(STORAGE_KEY);
+                return json ? JSON.parse(json) : [];
+            } catch { return []; }
+        }
+
+        function saveStation(name) {
+            const trimmed = name.trim();
+            if (!trimmed) return;
+            let list = loadSavedStations().filter(s => s !== trimmed);
+            list.unshift(trimmed);
+            list = list.slice(0, MAX_SAVED);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+            renderSavedStations();
+        }
+
+        function removeSavedStation(name) {
+            let list = loadSavedStations().filter(s => s !== name);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+            renderSavedStations();
+        }
+
+        function renderSavedStations() {
+            const list = loadSavedStations();
+            savedLabel.classList.toggle('hidden', list.length === 0);
+            savedStationsWrap.innerHTML = list.map(name => {
+                const safe = String(name).replace(/"/g, '&quot;');
+                return `<span class="saved-chip inline-flex items-center gap-1 bg-slate-600 hover:bg-slate-500 rounded-full px-3 py-1.5 text-sm cursor-pointer transition-colors" data-station="${safe}">
+                    <span>${escapeHtml(name)}</span>
+                    <button type="button" class="remove-btn opacity-60 hover:opacity-100 text-slate-300 hover:text-red-400 text-base leading-none w-5 h-5 flex items-center justify-center rounded-full hover:bg-slate-600" aria-label="削除">×</button>
+                </span>`;
+            }).join('');
+            savedStationsWrap.querySelectorAll('.saved-chip').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    if (e.target.closest('.remove-btn')) return;
+                    targetInput.value = el.dataset.station || '';
+                    targetInput.focus();
+                });
+            });
+            savedStationsWrap.querySelectorAll('.remove-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const name = btn.closest('.saved-chip').dataset.station || '';
+                    removeSavedStation(name);
+                });
+            });
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
         const statusText = document.getElementById('statusText');
         const systemMsg = document.getElementById('systemMsg');
         const transcriptLog = document.getElementById('transcriptLog');
@@ -256,10 +320,13 @@
 
         function startListening() {
             if (!recognition) return;
-            if (!targetInput.value.trim()) {
+            const station = targetInput.value.trim();
+            if (!station) {
                 alert('先に駅名を入力してください。');
                 return;
             }
+
+            saveStation(station);
 
             // ユーザーのアクション（クリック）でバイブの権限をアクティブにするためのダミー
             if ("vibrate" in navigator) navigator.vibrate(10);
@@ -298,6 +365,8 @@
             alarmBox.classList.remove('vibrate-active');
             stopListening();
         });
+
+        renderSavedStations();
     </script>
 </body>
 </html>
