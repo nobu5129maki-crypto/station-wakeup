@@ -185,10 +185,32 @@
             if (transcriptLog.childNodes.length > 25) transcriptLog.removeChild(transcriptLog.lastChild);
         }
 
+        /** 漢字・カタカナ・ひらがなの表記ゆれを吸収して比較用に正規化 */
+        function normalizeForMatch(str) {
+            let s = str;
+            // カタカナ → ひらがな（Unicode範囲で一括変換）
+            s = s.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+            // よくある表記ゆれ（音声認識で漢字→ひらがなになりやすいもの）
+            s = s.replace(/御/g, 'お');
+            s = s.replace(/ヶ/g, 'が');
+            s = s.replace(/ヵ/g, 'か');
+            return s;
+        }
+
+        /** 正規表現用にエスケープ */
+        function escapeRegex(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
         function checkMatch(text) {
             const target = targetInput.value.trim();
             if (!target || !isListening) return;
-            if (text.includes(target)) {
+            const normTarget = normalizeForMatch(target);
+            const normText = normalizeForMatch(text);
+            // 部分一致だが、「新」+ 駅名（例: 新お茶の水）は別駅なので除外
+            const escaped = escapeRegex(normTarget);
+            const pattern = new RegExp(`(?<!新)${escaped}`);
+            if (pattern.test(normText)) {
                 triggerAlarm(text);
             }
         }
