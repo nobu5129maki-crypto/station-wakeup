@@ -108,8 +108,13 @@
             recognition.continuous = true;
             recognition.interimResults = true;
 
-            systemMsg.textContent = "Ready";
-            systemMsg.className = "text-green-500";
+            if (!window.isSecureContext) {
+                systemMsg.textContent = "⚠️ HTTPSで開いてください（file://ではマイクが使えません）";
+                systemMsg.className = "text-amber-500";
+            } else {
+                systemMsg.textContent = "Ready";
+                systemMsg.className = "text-green-500";
+            }
 
             recognition.onstart = () => {
                 systemMsg.textContent = "Listening...";
@@ -147,7 +152,16 @@
 
             recognition.onerror = (event) => {
                 if (event.error !== 'no-speech') {
-                    systemMsg.textContent = `Error: ${event.error}`;
+                    let msg = `Error: ${event.error}`;
+                    if (event.error === 'not-allowed') {
+                        msg = 'マイクが許可されていません。ブラウザの設定でマイクを許可するか、HTTPSで開いてください。';
+                    } else if (event.error === 'network') {
+                        msg = 'ネットワークエラー。インターネット接続を確認してください。';
+                    } else if (event.error === 'audio-capture') {
+                        msg = 'マイクが使用できません。他のアプリが使用中か確認してください。';
+                    }
+                    systemMsg.textContent = msg;
+                    systemMsg.className = "text-red-500";
                     console.warn('Speech Recognition Error:', event.error);
                 }
             };
