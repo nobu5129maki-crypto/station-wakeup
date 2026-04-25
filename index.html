@@ -163,6 +163,16 @@
         let recognition = null;
         let restartTimer = null;
         let vibrationInterval = null;
+        /** 監視中ずっと生かす。無音→自動再開のたびの recognition.start() がユーザ操作外になり、
+         * ブラウザが not-allowed を返すのを防ぐ */
+        let micStream = null;
+
+        function releaseMic() {
+            if (micStream) {
+                micStream.getTracks().forEach(t => t.stop());
+                micStream = null;
+            }
+        }
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -215,7 +225,11 @@
             };
 
             recognition.onerror = (event) => {
-                if (event.error !== 'no-speech') {
+                // 無音・再開直後に出ることが多く、恒久的な失敗と誤魔化しやすい
+                if (event.error === 'no-speech' || event.error === 'aborted') {
+                    return;
+                }
+                if (isListening) {
                     let msg = `Error: ${event.error}`;
                     if (event.error === 'not-allowed') {
                         msg = 'マイクが許可されていません。ブラウザの設定でマイクを許可するか、HTTPSで開いてください。';
@@ -223,11 +237,13 @@
                         msg = 'ネットワークエラー。インターネット接続を確認してください。';
                     } else if (event.error === 'audio-capture') {
                         msg = 'マイクが使用できません。他のアプリが使用中か確認してください。';
+                    } else if (event.error === 'service-not-allowed') {
+                        msg = '音声認識サービスに接続できません。しばらくしてから再試行するか、通信環境を確認してください。';
                     }
                     systemMsg.textContent = msg;
                     systemMsg.className = "text-red-500";
-                    console.warn('Speech Recognition Error:', event.error);
                 }
+                console.warn('Speech Recognition Error:', event.error);
             };
         }
 
@@ -283,6 +299,7 @@
             // アラーム検知時は監視を止める
             isListening = false;
             if (recognition) recognition.stop();
+            releaseMic();
             
             matchText.textContent = `「${detectedText}」を検知しました`;
             alarmPanel.classList.remove('hidden');
@@ -318,7 +335,7 @@
             }
         }
 
-        function startListening() {
+        async function startListening() {
             if (!recognition) return;
             const station = targetInput.value.trim();
             if (!station) {
@@ -331,11 +348,30 @@
             // ユーザーのアクション（クリック）でバイブの権限をアクティブにするためのダミー
             if ("vibrate" in navigator) navigator.vibrate(10);
 
+            releaseMic();
+            if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+                try {
+                    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                } catch (e) {
+                    systemMsg.textContent = 'マイクが許可されていません。ブラウザの設定でマイクを許可するか、HTTPSで開いてください。';
+                    systemMsg.className = "text-red-500";
+                    return;
+                }
+            }
+
             isListening = true;
             transcriptLog.innerHTML = '';
             try {
                 recognition.start();
-            } catch (e) {}
+            } catch (e) {
+                isListening = false;
+                releaseMic();
+                statusText.textContent = '監視を開始する';
+                toggleBtn.classList.remove('pulse');
+                systemMsg.textContent = '音声認識を開始できませんでした。もう一度お試しください。';
+                systemMsg.className = "text-red-500";
+                return;
+            }
             statusText.textContent = '監視中...';
             toggleBtn.classList.replace('bg-blue-600', 'bg-red-600');
             toggleBtn.classList.add('pulse');
@@ -345,6 +381,7 @@
             isListening = false;
             clearTimeout(restartTimer);
             if (recognition) recognition.stop();
+            releaseMic();
             stopVibration();
             statusText.textContent = '監視を開始する';
             toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
