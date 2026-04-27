@@ -163,16 +163,11 @@
         let recognition = null;
         let restartTimer = null;
         let vibrationInterval = null;
-        /** 監視中ずっと生かす。無音→自動再開のたびの recognition.start() がユーザ操作外になり、
-         * ブラウザが not-allowed を返すのを防ぐ */
-        let micStream = null;
-
-        function releaseMic() {
-            if (micStream) {
-                micStream.getTracks().forEach(t => t.stop());
-                micStream = null;
-            }
-        }
+        /** マイクを getUserMedia で掴み続けると、多くの環境で Web Speech API が
+         * 同じデバイスを掴めず、聞き取りが途切れるため使わない */
+        const RESTART_MS = 500;
+        /** 今回の「監視中」に一度でも onstart したか（初回拒否と再開前の一時 not-allowed を分ける） */
+        let hadRecognitionOnStart = false;
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -191,6 +186,7 @@
             }
 
             recognition.onstart = () => {
+                hadRecognitionOnStart = true;
                 systemMsg.textContent = "Listening...";
                 systemMsg.className = "text-blue-400";
             };
@@ -217,7 +213,7 @@
                         if (isListening) {
                             try { recognition.start(); } catch(e) {}
                         }
-                    }, 300);
+                    }, RESTART_MS);
                 } else {
                     systemMsg.textContent = "Stopped";
                     systemMsg.className = "text-slate-400";
@@ -227,6 +223,12 @@
             recognition.onerror = (event) => {
                 // 無音・再開直後に出ることが多く、恒久的な失敗と誤魔化しやすい
                 if (event.error === 'no-speech' || event.error === 'aborted') {
+                    return;
+                }
+                // セッション再開前後の一時的な not-allowed は onend 側の再 start で回復しやすい
+                if (isListening && event.error === 'not-allowed' && hadRecognitionOnStart) {
+                    systemMsg.textContent = "再接続中…";
+                    systemMsg.className = "text-yellow-500";
                     return;
                 }
                 if (isListening) {
@@ -299,7 +301,6 @@
             // アラーム検知時は監視を止める
             isListening = false;
             if (recognition) recognition.stop();
-            releaseMic();
             
             matchText.textContent = `「${detectedText}」を検知しました`;
             alarmPanel.classList.remove('hidden');
@@ -335,7 +336,7 @@
             }
         }
 
-        async function startListening() {
+        function startListening() {
             if (!recognition) return;
             const station = targetInput.value.trim();
             if (!station) {
@@ -348,24 +349,13 @@
             // ユーザーのアクション（クリック）でバイブの権限をアクティブにするためのダミー
             if ("vibrate" in navigator) navigator.vibrate(10);
 
-            releaseMic();
-            if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
-                try {
-                    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                } catch (e) {
-                    systemMsg.textContent = 'マイクが許可されていません。ブラウザの設定でマイクを許可するか、HTTPSで開いてください。';
-                    systemMsg.className = "text-red-500";
-                    return;
-                }
-            }
-
+            hadRecognitionOnStart = false;
             isListening = true;
             transcriptLog.innerHTML = '';
             try {
                 recognition.start();
             } catch (e) {
                 isListening = false;
-                releaseMic();
                 statusText.textContent = '監視を開始する';
                 toggleBtn.classList.remove('pulse');
                 systemMsg.textContent = '音声認識を開始できませんでした。もう一度お試しください。';
@@ -381,7 +371,6 @@
             isListening = false;
             clearTimeout(restartTimer);
             if (recognition) recognition.stop();
-            releaseMic();
             stopVibration();
             statusText.textContent = '監視を開始する';
             toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
