@@ -162,57 +162,74 @@
         let isListening = false;
         let recognition = null;
         let restartTimer = null;
+        let retryStartTimer = null;
         let vibrationInterval = null;
-        /** マイクを getUserMedia で掴み続けると、多くの環境で Web Speech API が
-         * 同じデバイスを掴めず、聞き取りが途切れるため使わない */
-        const RESTART_MS = 500;
+
+        const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+        /** セッション終了後に次を起動するまでの待ち（短すぎると InvalidStateError） */
+        const RESTART_MS = 600;
+        /** Chrome 等で約10〜20分で内部セッションが不安定になりやすいため、定期的に認識インスタンスを作り直す */
+        const INSTANCE_TTL_MS = 8 * 60 * 1000;
+        /** start() がコケたときの再試行（新インスタンス） */
+        const MAX_START_RETRIES = 5;
+        /** 前回インスタンス生成から8分経過したら、次の onend で1回だけ作り直す */
+        let lastInstanceCreatedAt = 0;
         /** 今回の「監視中」に一度でも onstart したか（初回拒否と再開前の一時 not-allowed を分ける） */
         let hadRecognitionOnStart = false;
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        function clearSpeechTimers() {
+            clearTimeout(restartTimer);
+            clearTimeout(retryStartTimer);
+            restartTimer = null;
+            retryStartTimer = null;
+        }
 
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.lang = 'ja-JP';
-            recognition.continuous = true;
-            recognition.interimResults = true;
+        function attachRecognition(rec) {
+            rec.lang = 'ja-JP';
+            rec.continuous = true;
+            rec.interimResults = true;
+            try {
+                rec.maxAlternatives = 5;
+            } catch (e) { /* 未対応ブラウザ */ }
 
-            if (!window.isSecureContext) {
-                systemMsg.textContent = "⚠️ HTTPSで開いてください（file://ではマイクが使えません）";
-                systemMsg.className = "text-amber-500";
-            } else {
-                systemMsg.textContent = "Ready";
-                systemMsg.className = "text-green-500";
-            }
-
-            recognition.onstart = () => {
+            rec.onstart = () => {
                 hadRecognitionOnStart = true;
                 systemMsg.textContent = "Listening...";
                 systemMsg.className = "text-blue-400";
             };
 
-            recognition.onresult = (event) => {
-                let currentTranscript = '';
+            rec.onresult = (event) => {
                 for (let i = event.resultIndex; i < event.results.length; i++) {
-                    currentTranscript += event.results[i][0].transcript;
-                }
-                
-                if (currentTranscript.trim()) {
-                    updateLog(currentTranscript, event.results[event.resultIndex].isFinal);
-                    // 確定を待たず、中間結果でもキーワードが含まれていれば即座にチェック
-                    checkMatch(currentTranscript);
+                    const res = event.results[i];
+                    const isFinal = res.isFinal;
+                    const parts = [];
+                    for (let a = 0; a < res.length; a++) {
+                        const t = res[a].transcript;
+                        if (t && t.trim()) {
+                            parts.push(t.trim());
+                            checkMatch(t);
+                        }
+                    }
+                    if (parts.length) {
+                        const line = parts.join(' ');
+                        updateLog(line, isFinal);
+                        checkMatch(line);
+                    }
                 }
             };
 
-            recognition.onend = () => {
+            rec.onend = () => {
                 if (isListening) {
+                    clearTimeout(retryStartTimer);
                     systemMsg.textContent = "Auto-Restarting...";
                     systemMsg.className = "text-yellow-500";
                     clearTimeout(restartTimer);
+                    if (Date.now() - lastInstanceCreatedAt >= INSTANCE_TTL_MS) {
+                        recognition = createRecognition();
+                        lastInstanceCreatedAt = Date.now();
+                    }
                     restartTimer = setTimeout(() => {
-                        if (isListening) {
-                            try { recognition.start(); } catch(e) {}
-                        }
+                        if (isListening) tryStartRecognition(0, { fromUserClick: false });
                     }, RESTART_MS);
                 } else {
                     systemMsg.textContent = "Stopped";
@@ -220,14 +237,17 @@
                 }
             };
 
-            recognition.onerror = (event) => {
-                // 無音・再開直後に出ることが多く、恒久的な失敗と誤魔化しやすい
+            rec.onerror = (event) => {
                 if (event.error === 'no-speech' || event.error === 'aborted') {
                     return;
                 }
-                // セッション再開前後の一時的な not-allowed は onend 側の再 start で回復しやすい
                 if (isListening && event.error === 'not-allowed' && hadRecognitionOnStart) {
                     systemMsg.textContent = "再接続中…";
+                    systemMsg.className = "text-yellow-500";
+                    return;
+                }
+                if (isListening && event.error === 'network') {
+                    systemMsg.textContent = "ネットワークの不調です。自動で再接続します…";
                     systemMsg.className = "text-yellow-500";
                     return;
                 }
@@ -235,8 +255,6 @@
                     let msg = `Error: ${event.error}`;
                     if (event.error === 'not-allowed') {
                         msg = 'マイクが許可されていません。ブラウザの設定でマイクを許可するか、HTTPSで開いてください。';
-                    } else if (event.error === 'network') {
-                        msg = 'ネットワークエラー。インターネット接続を確認してください。';
                     } else if (event.error === 'audio-capture') {
                         msg = 'マイクが使用できません。他のアプリが使用中か確認してください。';
                     } else if (event.error === 'service-not-allowed') {
@@ -247,6 +265,59 @@
                 }
                 console.warn('Speech Recognition Error:', event.error);
             };
+        }
+
+        function createRecognition() {
+            if (!SpeechRecognitionCtor) return null;
+            const rec = new SpeechRecognitionCtor();
+            attachRecognition(rec);
+            return rec;
+        }
+
+        /** recognition.start() は長時間後や直前の stop 直後に例外になることがあるため再試行する */
+        function tryStartRecognition(attempt, opts) {
+            const fromUserClick = opts && opts.fromUserClick;
+            if (!isListening || !SpeechRecognitionCtor) return;
+            if (!recognition) recognition = createRecognition();
+            if (!recognition) return;
+            try {
+                recognition.start();
+            } catch (e) {
+                console.warn('recognition.start failed', attempt, e);
+                if (attempt < MAX_START_RETRIES) {
+                    recognition = createRecognition();
+                    retryStartTimer = setTimeout(() => {
+                        tryStartRecognition(attempt + 1, opts);
+                    }, 350 + attempt * 200);
+                } else if (fromUserClick) {
+                    isListening = false;
+                    statusText.textContent = '監視を開始する';
+                    toggleBtn.classList.remove('pulse');
+                    toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
+                    systemMsg.textContent = '音声認識を開始できませんでした。ページを一度再読み込みするか、しばらくしてからもう一度お試しください。';
+                    systemMsg.className = "text-red-500";
+                } else {
+                    recognition = createRecognition();
+                    systemMsg.textContent = "認識の再接続に失敗しました。自動で再試行しています…";
+                    systemMsg.className = "text-yellow-500";
+                    retryStartTimer = setTimeout(() => {
+                        if (!isListening) return;
+                        tryStartRecognition(0, { fromUserClick: false });
+                    }, 3000);
+                }
+            }
+        }
+
+        if (SpeechRecognitionCtor) {
+            recognition = createRecognition();
+
+            if (!window.isSecureContext) {
+                systemMsg.textContent = "⚠️ HTTPSで開いてください（file://ではマイクが使えません）";
+                systemMsg.className = "text-amber-500";
+            } else {
+                systemMsg.textContent = "Ready";
+                systemMsg.className = "text-green-500";
+            }
         }
 
         function updateLog(text, isFinal) {
@@ -269,7 +340,7 @@
 
         /** 漢字・カタカナ・ひらがなの表記ゆれを吸収して比較用に正規化 */
         function normalizeForMatch(str) {
-            let s = str;
+            let s = typeof str.normalize === 'function' ? str.normalize('NFKC') : str;
             // カタカナ → ひらがな（Unicode範囲で一括変換）
             s = s.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
             // よくある表記ゆれ（音声認識で漢字→ひらがなになりやすいもの）
@@ -298,9 +369,11 @@
         }
 
         function triggerAlarm(detectedText) {
-            // アラーム検知時は監視を止める
             isListening = false;
-            if (recognition) recognition.stop();
+            clearSpeechTimers();
+            if (recognition) {
+                try { recognition.stop(); } catch (e) {}
+            }
             
             matchText.textContent = `「${detectedText}」を検知しました`;
             alarmPanel.classList.remove('hidden');
@@ -337,7 +410,7 @@
         }
 
         function startListening() {
-            if (!recognition) return;
+            if (!SpeechRecognitionCtor) return;
             const station = targetInput.value.trim();
             if (!station) {
                 alert('先に駅名を入力してください。');
@@ -346,31 +419,28 @@
 
             saveStation(station);
 
-            // ユーザーのアクション（クリック）でバイブの権限をアクティブにするためのダミー
             if ("vibrate" in navigator) navigator.vibrate(10);
 
+            clearSpeechTimers();
             hadRecognitionOnStart = false;
+            lastInstanceCreatedAt = Date.now();
             isListening = true;
             transcriptLog.innerHTML = '';
-            try {
-                recognition.start();
-            } catch (e) {
-                isListening = false;
-                statusText.textContent = '監視を開始する';
-                toggleBtn.classList.remove('pulse');
-                systemMsg.textContent = '音声認識を開始できませんでした。もう一度お試しください。';
-                systemMsg.className = "text-red-500";
-                return;
-            }
+            recognition = createRecognition();
+
             statusText.textContent = '監視中...';
             toggleBtn.classList.replace('bg-blue-600', 'bg-red-600');
             toggleBtn.classList.add('pulse');
+
+            tryStartRecognition(0, { fromUserClick: true });
         }
 
         function stopListening() {
             isListening = false;
-            clearTimeout(restartTimer);
-            if (recognition) recognition.stop();
+            clearSpeechTimers();
+            if (recognition) {
+                try { recognition.stop(); } catch (e) {}
+            }
             stopVibration();
             statusText.textContent = '監視を開始する';
             toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
