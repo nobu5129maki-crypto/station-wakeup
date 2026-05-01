@@ -56,11 +56,7 @@
                 </div>
             </div>
 
-            <label class="flex items-center gap-2 mt-2 text-sm text-slate-300 cursor-pointer select-none">
-                <input type="checkbox" id="vibrateToggle" class="rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500">
-                <span>バイブレーションで知らせる（対応端末／通知許可で補完）</span>
-            </label>
-            <button id="toggleBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 text-lg shadow-lg mt-4">
+            <button id="toggleBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 text-lg shadow-lg">
                 <span id="statusIcon">🎤</span>
                 <span id="statusText">監視を開始する</span>
             </button>
@@ -87,8 +83,8 @@
         </div>
 
         <footer class="text-center text-slate-500 text-xs pb-10">
-            <p>※ 監視開始前に一度画面をタップし、必要ならブラウザの通知を許可してください（PWAでバイブが鳴らない環境の補完に使います）。</p>
-            <p>※ iPhone(iOS)では Web のバイブや通知による振動が制限される場合があります。</p>
+            <p>※ Android 等で振動が弱いときは、ブラウザの通知を許可すると通知経由の振動が付くことがあります。</p>
+            <p>※ iPhone の Safari では Web の振動 API に非対応のため、短いアラーム音でお知らせします（監視開始ボタンで音声の準備をします）。</p>
         </footer>
     </div>
 
@@ -162,25 +158,6 @@
         const alarmBox = document.getElementById('alarmBox');
         const matchText = document.getElementById('matchText');
         const stopAlarmBtn = document.getElementById('stopAlarmBtn');
-        const vibrateToggle = document.getElementById('vibrateToggle');
-
-        const VIBRATE_PREF_KEY = 'stationWakeUp_vibrateEnabled';
-
-        function isVibratePrefOn() {
-            try {
-                const v = localStorage.getItem(VIBRATE_PREF_KEY);
-                if (v === null) return true;
-                return v === '1';
-            } catch {
-                return true;
-            }
-        }
-
-        function setVibratePref(on) {
-            try {
-                localStorage.setItem(VIBRATE_PREF_KEY, on ? '1' : '0');
-            } catch { /* ignore */ }
-        }
 
         let isListening = false;
         let recognition = null;
@@ -188,7 +165,9 @@
         let retryStartTimer = null;
         let vibrationInterval = null;
         let alarmNotificationRef = null;
-        let notifyRepeatTimer = null;
+        let alarmBuzzInterval = null;
+        /** 監視開始のタップで resume し、アラーム時に iOS 等で音を鳴らす */
+        let alarmAudioCtx = null;
 
         const ALARM_NOTIFY_TAG = 'station-wakeup-alarm';
 
@@ -205,13 +184,58 @@
             }
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.ready
-                    .then((reg) => reg.getNotifications({ tag: ALARM_NOTIFY_TAG }))
+                    .then((reg) => {
+                        if (typeof reg.getNotifications === 'function') {
+                            return reg.getNotifications({ tag: ALARM_NOTIFY_TAG });
+                        }
+                        return [];
+                    })
                     .then((list) => list.forEach((n) => { try { n.close(); } catch (e) { /* ignore */ } }))
                     .catch(() => {});
             }
         }
 
-        /** Android 等では Service Worker 経由の showNotification の vibrate の方が、ページからの vibrate より確実な場合がある */
+        function primeAlarmAudioFromUserGesture() {
+            try {
+                const Ctor = window.AudioContext || window.webkitAudioContext;
+                if (!Ctor) return;
+                if (!alarmAudioCtx) alarmAudioCtx = new Ctor();
+                const p = alarmAudioCtx.resume();
+                if (p && typeof p.then === 'function') p.catch(() => {});
+            } catch (e) { /* ignore */ }
+        }
+
+        /** Web バイブ非対応（主に iOS Safari）向けの短いビープ */
+        function playAlarmBuzzTone() {
+            try {
+                const Ctor = window.AudioContext || window.webkitAudioContext;
+                if (!Ctor) return;
+                if (!alarmAudioCtx) alarmAudioCtx = new Ctor();
+                const buzz = () => {
+                    try {
+                        const t0 = alarmAudioCtx.currentTime;
+                        const o = alarmAudioCtx.createOscillator();
+                        const g = alarmAudioCtx.createGain();
+                        o.type = 'square';
+                        o.frequency.setValueAtTime(880, t0);
+                        g.gain.setValueAtTime(0.0001, t0);
+                        g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.02);
+                        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+                        o.connect(g);
+                        g.connect(alarmAudioCtx.destination);
+                        o.start(t0);
+                        o.stop(t0 + 0.2);
+                    } catch (e) { /* ignore */ }
+                };
+                if (alarmAudioCtx.state !== 'running') {
+                    alarmAudioCtx.resume().then(buzz).catch(() => {});
+                } else {
+                    buzz();
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        /** 通知が許可されていれば付加（メインの振動は navigator.vibrate） */
         function showAlarmHapticNotification() {
             if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
             const title = '駅に到着します';
@@ -254,6 +278,7 @@
         let lastInstanceCreatedAt = 0;
         /** 今回の「監視中」に一度でも onstart したか（初回拒否と再開前の一時 not-allowed を分ける） */
         let hadRecognitionOnStart = false;
+        let alarmShowing = false;
 
         function clearSpeechTimers() {
             clearTimeout(restartTimer);
@@ -447,6 +472,8 @@
         }
 
         function triggerAlarm(detectedText) {
+            if (alarmShowing) return;
+            alarmShowing = true;
             isListening = false;
             clearSpeechTimers();
             if (recognition) {
@@ -467,41 +494,45 @@
         }
 
         function startVibration() {
-            if (!isVibratePrefOn()) return;
-
             if (vibrationInterval) {
                 clearInterval(vibrationInterval);
                 vibrationInterval = null;
             }
-            if (notifyRepeatTimer) {
-                clearInterval(notifyRepeatTimer);
-                notifyRepeatTimer = null;
+            if (alarmBuzzInterval) {
+                clearInterval(alarmBuzzInterval);
+                alarmBuzzInterval = null;
             }
             if (typeof navigator.vibrate === 'function') {
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
             }
             closeAlarmNotificationsAndPageInstance();
 
-            const longPattern = [500, 200, 500, 200, 500, 200, 500, 200, 500];
-            const loopPattern = [600, 300, 600];
+            const longPattern = [1000, 500, 1000, 500, 1000];
+            const loopPattern = [1000, 500, 1000];
 
             if (typeof navigator.vibrate === 'function') {
                 try {
+                    navigator.vibrate(0);
                     navigator.vibrate(longPattern);
                 } catch (e) { /* ignore */ }
+                setTimeout(() => {
+                    try {
+                        navigator.vibrate(0);
+                        navigator.vibrate(longPattern);
+                    } catch (e) { /* ignore */ }
+                }, 0);
                 vibrationInterval = setInterval(() => {
                     try {
                         navigator.vibrate(loopPattern);
                     } catch (e) { /* ignore */ }
-                }, 3200);
+                }, 3000);
+            } else {
+                playAlarmBuzzTone();
+                alarmBuzzInterval = setInterval(() => playAlarmBuzzTone(), 2800);
             }
-            // 許可済みなら Service Worker / 通知の vibrate を併用（Web の vibrate だけが効かない端末向け）
-            const canNotify = typeof Notification !== 'undefined' && Notification.permission === 'granted';
-            if (canNotify) {
+
+            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
                 showAlarmHapticNotification();
-                notifyRepeatTimer = setInterval(() => {
-                    showAlarmHapticNotification();
-                }, 8000);
             }
         }
 
@@ -510,9 +541,9 @@
                 clearInterval(vibrationInterval);
                 vibrationInterval = null;
             }
-            if (notifyRepeatTimer) {
-                clearInterval(notifyRepeatTimer);
-                notifyRepeatTimer = null;
+            if (alarmBuzzInterval) {
+                clearInterval(alarmBuzzInterval);
+                alarmBuzzInterval = null;
             }
             if (typeof navigator.vibrate === 'function') {
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
@@ -531,8 +562,12 @@
             saveStation(station);
 
             const beginMonitor = () => {
-                if (isVibratePrefOn() && typeof navigator.vibrate === 'function') {
+                primeAlarmAudioFromUserGesture();
+                if (typeof navigator.vibrate === 'function') {
                     try { navigator.vibrate(15); } catch (e) { /* ignore */ }
+                }
+                if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+                    Notification.requestPermission().catch(() => {});
                 }
 
                 clearSpeechTimers();
@@ -549,20 +584,11 @@
                 tryStartRecognition(0, { fromUserClick: true });
             };
 
-            // 通知許可はジェスチャー内で確定させないと、アラーム時点で granted になっていないことがある
-            if (
-                isVibratePrefOn()
-                && typeof Notification !== 'undefined'
-                && Notification.permission === 'default'
-            ) {
-                Notification.requestPermission()
-                    .finally(beginMonitor);
-            } else {
-                beginMonitor();
-            }
+            beginMonitor();
         }
 
         function stopListening() {
+            alarmShowing = false;
             isListening = false;
             clearSpeechTimers();
             if (recognition) {
@@ -588,9 +614,6 @@
             alarmBox.classList.remove('vibrate-active');
             stopListening();
         });
-
-        vibrateToggle.checked = isVibratePrefOn();
-        vibrateToggle.addEventListener('change', () => setVibratePref(vibrateToggle.checked));
 
         renderSavedStations();
     </script>
