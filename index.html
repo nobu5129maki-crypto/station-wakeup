@@ -56,7 +56,11 @@
                 </div>
             </div>
 
-            <button id="toggleBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 text-lg shadow-lg">
+            <label class="flex items-center gap-2 mt-2 text-sm text-slate-300 cursor-pointer select-none">
+                <input type="checkbox" id="vibrateToggle" class="rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500">
+                <span>バイブレーションで知らせる（対応端末／通知許可で補完）</span>
+            </label>
+            <button id="toggleBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 text-lg shadow-lg mt-4">
                 <span id="statusIcon">🎤</span>
                 <span id="statusText">監視を開始する</span>
             </button>
@@ -83,8 +87,8 @@
         </div>
 
         <footer class="text-center text-slate-500 text-xs pb-10">
-            <p>※ バイブレーションが作動しない場合は、一度画面をタップしてください。</p>
-            <p>※ iPhone(iOS)のSafariではマナーモード中にバイブが制限される場合があります。</p>
+            <p>※ 監視開始前に一度画面をタップし、必要ならブラウザの通知を許可してください（PWAでバイブが鳴らない環境の補完に使います）。</p>
+            <p>※ iPhone(iOS)では Web のバイブや通知による振動が制限される場合があります。</p>
         </footer>
     </div>
 
@@ -158,12 +162,39 @@
         const alarmBox = document.getElementById('alarmBox');
         const matchText = document.getElementById('matchText');
         const stopAlarmBtn = document.getElementById('stopAlarmBtn');
+        const vibrateToggle = document.getElementById('vibrateToggle');
+
+        const VIBRATE_PREF_KEY = 'stationWakeUp_vibrateEnabled';
+
+        function isVibratePrefOn() {
+            try {
+                const v = localStorage.getItem(VIBRATE_PREF_KEY);
+                if (v === null) return true;
+                return v === '1';
+            } catch {
+                return true;
+            }
+        }
+
+        function setVibratePref(on) {
+            try {
+                localStorage.setItem(VIBRATE_PREF_KEY, on ? '1' : '0');
+            } catch { /* ignore */ }
+        }
+
+        function requestNotifyPermissionIfNeeded() {
+            if (!isVibratePrefOn()) return;
+            if (typeof Notification === 'undefined') return;
+            if (Notification.permission !== 'default') return;
+            Notification.requestPermission().catch(() => {});
+        }
 
         let isListening = false;
         let recognition = null;
         let restartTimer = null;
         let retryStartTimer = null;
         let vibrationInterval = null;
+        let alarmNotificationRef = null;
 
         const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
         /** セッション終了後に次を起動するまでの待ち（短すぎると InvalidStateError） */
@@ -389,13 +420,52 @@
         }
 
         function startVibration() {
-            if ("vibrate" in navigator) {
-                // 初回起動
-                navigator.vibrate([1000, 500, 1000, 500, 1000]);
-                // 繰り返し実行（止めるまで）
+            if (!isVibratePrefOn()) return;
+
+            if (vibrationInterval) {
+                clearInterval(vibrationInterval);
+                vibrationInterval = null;
+            }
+            if (typeof navigator.vibrate === 'function') {
+                try { navigator.vibrate(0); } catch (e) { /* ignore */ }
+            }
+            if (alarmNotificationRef) {
+                try { alarmNotificationRef.close(); } catch (e) { /* ignore */ }
+                alarmNotificationRef = null;
+            }
+
+            const longPattern = [1000, 500, 1000, 500, 1000];
+            const loopPattern = [1000, 500, 1000];
+
+            let hardwareOk = false;
+            if (typeof navigator.vibrate === 'function') {
+                try {
+                    hardwareOk = !!navigator.vibrate(longPattern);
+                } catch (e) {
+                    hardwareOk = false;
+                }
+            }
+
+            // PWA・音声認識コールバック後など navigator.vibrate が失敗しやすい環境向け（通知の vibrate）
+            if (!hardwareOk && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                try {
+                    alarmNotificationRef = new Notification('駅に到着します', {
+                        body: 'アラームが鳴っています。画面の「アラームを止める」で停止してください。',
+                        tag: 'station-wakeup-vibrate-fallback',
+                        requireInteraction: true,
+                        vibrate: longPattern,
+                    });
+                } catch (e) {
+                    alarmNotificationRef = null;
+                }
+            }
+
+            if (typeof navigator.vibrate === 'function') {
                 vibrationInterval = setInterval(() => {
-                    navigator.vibrate([1000, 500, 1000]);
-                }, 3000);
+                    try {
+                        navigator.vibrate(loopPattern);
+                    } catch (e) { /* ignore */ }
+                }, 3500);
             }
         }
 
@@ -404,8 +474,12 @@
                 clearInterval(vibrationInterval);
                 vibrationInterval = null;
             }
-            if ("vibrate" in navigator) {
-                navigator.vibrate(0);
+            if (typeof navigator.vibrate === 'function') {
+                try { navigator.vibrate(0); } catch (e) { /* ignore */ }
+            }
+            if (alarmNotificationRef) {
+                try { alarmNotificationRef.close(); } catch (e) { /* ignore */ }
+                alarmNotificationRef = null;
             }
         }
 
@@ -419,7 +493,11 @@
 
             saveStation(station);
 
-            if ("vibrate" in navigator) navigator.vibrate(10);
+            requestNotifyPermissionIfNeeded();
+
+            if (isVibratePrefOn() && typeof navigator.vibrate === 'function') {
+                try { navigator.vibrate(10); } catch (e) { /* ignore */ }
+            }
 
             clearSpeechTimers();
             hadRecognitionOnStart = false;
@@ -461,6 +539,9 @@
             alarmBox.classList.remove('vibrate-active');
             stopListening();
         });
+
+        vibrateToggle.checked = isVibratePrefOn();
+        vibrateToggle.addEventListener('change', () => setVibratePref(vibrateToggle.checked));
 
         renderSavedStations();
     </script>
