@@ -1,24 +1,38 @@
-const CACHE_NAME = 'station-wakeup-v2';
+const CACHE_NAME = 'station-wakeup-v3';
 const ASSETS = [
   './',
   './index.html',
   'https://cdn.tailwindcss.com'
 ];
 
-// インストール時にファイルをキャッシュ
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
 });
 
-// オフライン時にキャッシュから返却
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
+    caches.match(event.request).then((response) => response || fetch(event.request))
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      if (clientList.length) {
+        const c = clientList[0];
+        if ('focus' in c) return c.focus();
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow('./index.html');
+      }
     })
   );
 });

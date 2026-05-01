@@ -182,19 +182,66 @@
             } catch { /* ignore */ }
         }
 
-        function requestNotifyPermissionIfNeeded() {
-            if (!isVibratePrefOn()) return;
-            if (typeof Notification === 'undefined') return;
-            if (Notification.permission !== 'default') return;
-            Notification.requestPermission().catch(() => {});
-        }
-
         let isListening = false;
         let recognition = null;
         let restartTimer = null;
         let retryStartTimer = null;
         let vibrationInterval = null;
         let alarmNotificationRef = null;
+        let notifyRepeatTimer = null;
+
+        const ALARM_NOTIFY_TAG = 'station-wakeup-alarm';
+
+        function registerServiceWorkerForAlarms() {
+            if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+            navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+        }
+        registerServiceWorkerForAlarms();
+
+        function closeAlarmNotificationsAndPageInstance() {
+            if (alarmNotificationRef) {
+                try { alarmNotificationRef.close(); } catch (e) { /* ignore */ }
+                alarmNotificationRef = null;
+            }
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.ready
+                    .then((reg) => reg.getNotifications({ tag: ALARM_NOTIFY_TAG }))
+                    .then((list) => list.forEach((n) => { try { n.close(); } catch (e) { /* ignore */ } }))
+                    .catch(() => {});
+            }
+        }
+
+        /** Android 等では Service Worker 経由の showNotification の vibrate の方が、ページからの vibrate より確実な場合がある */
+        function showAlarmHapticNotification() {
+            if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+            const title = '駅に到着します';
+            const options = {
+                body: 'アラームが鳴っています。アプリに戻って「アラームを止める」を押してください。',
+                tag: ALARM_NOTIFY_TAG,
+                requireInteraction: true,
+                renotify: true,
+                vibrate: [450, 220, 450, 220, 450, 220, 450, 220, 450],
+                silent: false,
+                icon: './icon.svg',
+                badge: './icon.svg',
+            };
+
+            const viaPage = () => {
+                try {
+                    alarmNotificationRef = new Notification(title, options);
+                } catch (e) { /* ignore */ }
+            };
+
+            if ('serviceWorker' in navigator && window.isSecureContext) {
+                const timeoutMs = 4000;
+                const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('sw-ready-timeout')), timeoutMs));
+                Promise.race([navigator.serviceWorker.ready, timeout])
+                    .then((reg) => reg.showNotification(title, options))
+                    .catch(viaPage);
+            } else {
+                viaPage();
+            }
+        }
 
         const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
         /** セッション終了後に次を起動するまでの待ち（短すぎると InvalidStateError） */
@@ -426,46 +473,35 @@
                 clearInterval(vibrationInterval);
                 vibrationInterval = null;
             }
+            if (notifyRepeatTimer) {
+                clearInterval(notifyRepeatTimer);
+                notifyRepeatTimer = null;
+            }
             if (typeof navigator.vibrate === 'function') {
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
             }
-            if (alarmNotificationRef) {
-                try { alarmNotificationRef.close(); } catch (e) { /* ignore */ }
-                alarmNotificationRef = null;
-            }
+            closeAlarmNotificationsAndPageInstance();
 
-            const longPattern = [1000, 500, 1000, 500, 1000];
-            const loopPattern = [1000, 500, 1000];
-
-            let hardwareOk = false;
-            if (typeof navigator.vibrate === 'function') {
-                try {
-                    hardwareOk = !!navigator.vibrate(longPattern);
-                } catch (e) {
-                    hardwareOk = false;
-                }
-            }
-
-            // PWA・音声認識コールバック後など navigator.vibrate が失敗しやすい環境向け（通知の vibrate）
-            if (!hardwareOk && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-                try {
-                    alarmNotificationRef = new Notification('駅に到着します', {
-                        body: 'アラームが鳴っています。画面の「アラームを止める」で停止してください。',
-                        tag: 'station-wakeup-vibrate-fallback',
-                        requireInteraction: true,
-                        vibrate: longPattern,
-                    });
-                } catch (e) {
-                    alarmNotificationRef = null;
-                }
-            }
+            const longPattern = [500, 200, 500, 200, 500, 200, 500, 200, 500];
+            const loopPattern = [600, 300, 600];
 
             if (typeof navigator.vibrate === 'function') {
+                try {
+                    navigator.vibrate(longPattern);
+                } catch (e) { /* ignore */ }
                 vibrationInterval = setInterval(() => {
                     try {
                         navigator.vibrate(loopPattern);
                     } catch (e) { /* ignore */ }
-                }, 3500);
+                }, 3200);
+            }
+            // 許可済みなら Service Worker / 通知の vibrate を併用（Web の vibrate だけが効かない端末向け）
+            const canNotify = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+            if (canNotify) {
+                showAlarmHapticNotification();
+                notifyRepeatTimer = setInterval(() => {
+                    showAlarmHapticNotification();
+                }, 8000);
             }
         }
 
@@ -474,13 +510,14 @@
                 clearInterval(vibrationInterval);
                 vibrationInterval = null;
             }
+            if (notifyRepeatTimer) {
+                clearInterval(notifyRepeatTimer);
+                notifyRepeatTimer = null;
+            }
             if (typeof navigator.vibrate === 'function') {
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
             }
-            if (alarmNotificationRef) {
-                try { alarmNotificationRef.close(); } catch (e) { /* ignore */ }
-                alarmNotificationRef = null;
-            }
+            closeAlarmNotificationsAndPageInstance();
         }
 
         function startListening() {
@@ -493,24 +530,36 @@
 
             saveStation(station);
 
-            requestNotifyPermissionIfNeeded();
+            const beginMonitor = () => {
+                if (isVibratePrefOn() && typeof navigator.vibrate === 'function') {
+                    try { navigator.vibrate(15); } catch (e) { /* ignore */ }
+                }
 
-            if (isVibratePrefOn() && typeof navigator.vibrate === 'function') {
-                try { navigator.vibrate(10); } catch (e) { /* ignore */ }
+                clearSpeechTimers();
+                hadRecognitionOnStart = false;
+                lastInstanceCreatedAt = Date.now();
+                isListening = true;
+                transcriptLog.innerHTML = '';
+                recognition = createRecognition();
+
+                statusText.textContent = '監視中...';
+                toggleBtn.classList.replace('bg-blue-600', 'bg-red-600');
+                toggleBtn.classList.add('pulse');
+
+                tryStartRecognition(0, { fromUserClick: true });
+            };
+
+            // 通知許可はジェスチャー内で確定させないと、アラーム時点で granted になっていないことがある
+            if (
+                isVibratePrefOn()
+                && typeof Notification !== 'undefined'
+                && Notification.permission === 'default'
+            ) {
+                Notification.requestPermission()
+                    .finally(beginMonitor);
+            } else {
+                beginMonitor();
             }
-
-            clearSpeechTimers();
-            hadRecognitionOnStart = false;
-            lastInstanceCreatedAt = Date.now();
-            isListening = true;
-            transcriptLog.innerHTML = '';
-            recognition = createRecognition();
-
-            statusText.textContent = '監視中...';
-            toggleBtn.classList.replace('bg-blue-600', 'bg-red-600');
-            toggleBtn.classList.add('pulse');
-
-            tryStartRecognition(0, { fromUserClick: true });
         }
 
         function stopListening() {
