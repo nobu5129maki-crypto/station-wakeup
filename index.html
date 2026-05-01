@@ -39,8 +39,16 @@
         </header>
 
         <!-- Status Display -->
-        <div id="debugStatus" class="bg-slate-800 p-3 rounded-lg text-xs font-mono text-slate-400 border border-slate-700">
-            System: <span id="systemMsg" class="text-yellow-500">Initializing...</span>
+        <div id="debugStatus" class="bg-slate-800 p-3 rounded-lg text-xs font-mono text-slate-400 border border-slate-700 space-y-2">
+            <div>System: <span id="systemMsg" class="text-yellow-500">Initializing...</span></div>
+            <div class="text-[11px] text-slate-500 leading-relaxed border-t border-slate-700 pt-2 font-sans">
+                <span class="text-slate-400 font-medium">開き方（<code class="text-slate-500 font-mono">file://</code> 直開き不可）</span>
+                <ul class="mt-1.5 space-y-1.5 text-slate-300 list-none pl-0">
+                    <li><span class="text-slate-500">localhost …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">http://localhost:5500/index.html</code><span class="text-slate-500 block text-[10px] mt-0.5">※ポートは環境により異なります（例: Live Server 5500、<code class="font-mono text-slate-400">8080</code> など）</span></li>
+                    <li class="mt-2"><span class="text-slate-500">ループバック …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">http://127.0.0.1:5500/index.html</code></li>
+                    <li class="mt-2"><span class="text-slate-500">HTTPS …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">https://（あなたのサイト）/（このフォルダ）/index.html</code><span class="text-slate-500 block text-[10px] mt-0.5">例: GitHub Pages、自サーバ、クラウドの静的ホスティング</span></li>
+                </ul>
+            </div>
         </div>
 
         <!-- Setting Section -->
@@ -82,8 +90,9 @@
             </div>
         </div>
 
-        <footer class="text-center text-slate-500 text-xs pb-10">
-            <p>※ Android 等で振動が弱いときは、ブラウザの通知を許可すると通知経由の振動が付くことがあります。</p>
+        <footer class="text-center text-slate-500 text-xs pb-10 space-y-2">
+            <p>マイク・通知・オフライン用の設定は、上の「開き方」のとおり <code class="text-slate-400 font-mono text-[11px]">http://localhost:…</code> または <code class="text-slate-400 font-mono text-[11px]">https://…</code> で開いてください。</p>
+            <p>※ <span class="text-slate-400">Android でホーム画面に追加したアプリ</span>から使う場合、画面内だけの振動が効かず、通知の振動頼みになることがあります。監視開始時の「通知を許可」は許可するか、Android の設定でこのアプリ（サイト）の通知をオンにしてください。マナーモードや「振動オフ」だと鳴りません。</p>
             <p>※ iPhone の Safari では Web の振動 API に非対応のため、短いアラーム音でお知らせします（監視開始ボタンで音声の準備をします）。</p>
         </footer>
     </div>
@@ -166,10 +175,23 @@
         let vibrationInterval = null;
         let alarmNotificationRef = null;
         let alarmBuzzInterval = null;
+        /** Android インストールアプリ: 通知 vibrate の再送 */
+        let notifyRepeatTimer = null;
         /** 監視開始のタップで resume し、アラーム時に iOS 等で音を鳴らす */
         let alarmAudioCtx = null;
 
         const ALARM_NOTIFY_TAG = 'station-wakeup-alarm';
+
+        /** Android のホーム画面インストール時、Web の vibrate は効かないことが多く通知の vibrate が実質メインになる */
+        function isInstalledAndroidWebApp() {
+            if (!/Android/i.test(navigator.userAgent || '')) return false;
+            try {
+                return window.matchMedia('(display-mode: standalone)').matches
+                    || window.matchMedia('(display-mode: fullscreen)').matches;
+            } catch (e) {
+                return false;
+            }
+        }
 
         function registerServiceWorkerForAlarms() {
             if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
@@ -235,7 +257,7 @@
             } catch (e) { /* ignore */ }
         }
 
-        /** 通知が許可されていれば付加（メインの振動は navigator.vibrate） */
+        /** インストール版 Android ではここ経由の vibrate が本体振動の主になりやすい */
         function showAlarmHapticNotification() {
             if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
             const title = '駅に到着します';
@@ -244,7 +266,7 @@
                 tag: ALARM_NOTIFY_TAG,
                 requireInteraction: true,
                 renotify: true,
-                vibrate: [450, 220, 450, 220, 450, 220, 450, 220, 450],
+                vibrate: [500, 200, 500, 200, 500, 200, 500, 200, 500, 200, 800],
                 silent: false,
                 icon: './icon.svg',
                 badge: './icon.svg',
@@ -357,7 +379,7 @@
                 if (isListening) {
                     let msg = `Error: ${event.error}`;
                     if (event.error === 'not-allowed') {
-                        msg = 'マイクが許可されていません。ブラウザの設定でマイクを許可するか、HTTPSで開いてください。';
+                        msg = 'マイクが許可されていません。HTTPS または localhost の URL で開き直してください（画面上の「開き方」を参照）。';
                     } else if (event.error === 'audio-capture') {
                         msg = 'マイクが使用できません。他のアプリが使用中か確認してください。';
                     } else if (event.error === 'service-not-allowed') {
@@ -415,7 +437,7 @@
             recognition = createRecognition();
 
             if (!window.isSecureContext) {
-                systemMsg.textContent = "⚠️ HTTPSで開いてください（file://ではマイクが使えません）";
+                systemMsg.textContent = "⚠️ file:// では動きません。上の「localhost」または「HTTPS」の例のように URL を変えて開いてください";
                 systemMsg.className = "text-amber-500";
             } else {
                 systemMsg.textContent = "Ready";
@@ -502,6 +524,10 @@
                 clearInterval(alarmBuzzInterval);
                 alarmBuzzInterval = null;
             }
+            if (notifyRepeatTimer) {
+                clearInterval(notifyRepeatTimer);
+                notifyRepeatTimer = null;
+            }
             if (typeof navigator.vibrate === 'function') {
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
             }
@@ -509,6 +535,12 @@
 
             const longPattern = [1000, 500, 1000, 500, 1000];
             const loopPattern = [1000, 500, 1000];
+            const installedAndroid = isInstalledAndroidWebApp();
+
+            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                showAlarmHapticNotification();
+                notifyRepeatTimer = setInterval(() => showAlarmHapticNotification(), 4800);
+            }
 
             if (typeof navigator.vibrate === 'function') {
                 try {
@@ -526,13 +558,14 @@
                         navigator.vibrate(loopPattern);
                     } catch (e) { /* ignore */ }
                 }, 3000);
-            } else {
-                playAlarmBuzzTone();
-                alarmBuzzInterval = setInterval(() => playAlarmBuzzTone(), 2800);
             }
 
-            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-                showAlarmHapticNotification();
+            if (installedAndroid) {
+                playAlarmBuzzTone();
+                alarmBuzzInterval = setInterval(() => playAlarmBuzzTone(), 2600);
+            } else if (typeof navigator.vibrate !== 'function') {
+                playAlarmBuzzTone();
+                alarmBuzzInterval = setInterval(() => playAlarmBuzzTone(), 2800);
             }
         }
 
@@ -544,6 +577,10 @@
             if (alarmBuzzInterval) {
                 clearInterval(alarmBuzzInterval);
                 alarmBuzzInterval = null;
+            }
+            if (notifyRepeatTimer) {
+                clearInterval(notifyRepeatTimer);
+                notifyRepeatTimer = null;
             }
             if (typeof navigator.vibrate === 'function') {
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
@@ -566,9 +603,6 @@
                 if (typeof navigator.vibrate === 'function') {
                     try { navigator.vibrate(15); } catch (e) { /* ignore */ }
                 }
-                if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-                    Notification.requestPermission().catch(() => {});
-                }
 
                 clearSpeechTimers();
                 hadRecognitionOnStart = false;
@@ -584,6 +618,17 @@
                 tryStartRecognition(0, { fromUserClick: true });
             };
 
+            const needNotifyFirst = typeof Notification !== 'undefined'
+                && isInstalledAndroidWebApp()
+                && Notification.permission === 'default';
+
+            if (needNotifyFirst) {
+                Notification.requestPermission().finally(beginMonitor);
+                return;
+            }
+            if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+                Notification.requestPermission().catch(() => {});
+            }
             beginMonitor();
         }
 
