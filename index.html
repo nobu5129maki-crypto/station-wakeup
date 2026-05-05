@@ -97,10 +97,10 @@
             </div>
         </div>
 
-        <footer class="text-center text-slate-500 text-xs pb-10 space-y-2">
-            <p>マイク・通知・オフライン用の設定は、状態欄の「開き方」のとおり <code class="text-slate-400 font-mono text-[11px]">http://localhost:…</code> または <code class="text-slate-400 font-mono text-[11px]">https://…</code> で開いてください（<code class="text-slate-400 font-mono text-[11px]">http://192.168.x.x</code> だと非セキュア扱いで制限されることがあります）。</p>
-            <p>※ Android では、アナウンス検知はユーザー操作ではないため <code class="text-slate-400 font-mono text-[11px]">navigator.vibrate</code> が効かないことがあります。監視開始時に出る「通知を許可」は必ず許可し、通知のバイブ＆アラーム音に頼ってください。ホーム画面に追加したアプリでは特に通知が重要です。マナーモードや「振動オフ」だと鳴りません。</p>
-            <p>※ iPhone の Safari では Web の振動 API に非対応のため、短いアラーム音でお知らせします（監視開始ボタンで音声の準備をします）。</p>
+        <footer class="text-center text-slate-500 text-xs pb-10 space-y-1.5 leading-relaxed">
+            <p><strong class="text-slate-400 font-medium">開き方</strong>　<code class="font-mono text-[11px] text-slate-400">https://…</code> またはパソコン開発時は <code class="font-mono text-[11px] text-slate-400">localhost</code>。スマホから PC の <code class="font-mono text-[11px] text-slate-400">192.168.x.x</code> だけだとマイクなどが使えないことがあります。</p>
+            <p><strong class="text-slate-400 font-medium">Android</strong>　監視開始時の「通知を許可」はオンにしてください。アナウンス検知のタイミングでは画面内の振動だけに頼れない機種があります（通知の振動と音で知らせます）。マナーモードや振動オフでは鳴りません。</p>
+            <p><strong class="text-slate-400 font-medium">iPhone（Safari）</strong>　振動は使えないため、アラームは短い音でお知らせします。</p>
         </footer>
     </div>
 
@@ -189,6 +189,7 @@
 
         const ALARM_NOTIFY_TAG = 'station-wakeup-alarm';
 
+        function isAndroidUserAgent() {
             return /Android/i.test(navigator.userAgent || '');
         }
 
@@ -461,6 +462,8 @@
                 }
             }
         } else {
+            systemMsg.textContent = "音声認識に非対応のブラウザです";
+            systemMsg.className = "text-red-500 font-sans";
             if (setupHelpDetails) setupHelpDetails.open = true;
         }
 
