@@ -1,4 +1,4 @@
-const CACHE_NAME = 'station-wakeup-v5';
+const CACHE_NAME = 'station-wakeup-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -22,15 +22,26 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-/** ページからの音声検知ではユーザ操作が無く、メインスレッドの showNotification だと振動が省略される端末があるため SW 側で表示する */
+/**
+ * Android は「同じ tag の更新」だと振動しないことが多い。
+ * 少しずらして 2 通続けて出すと、フォアグラウンドでもバイブが付きやすい。
+ */
 self.addEventListener('message', (event) => {
   const data = event.data;
   if (!data || data.type !== 'alarm-haptic') return;
   const title = data.title || '駅に到着します';
-  const options = data.options;
-  if (!options || typeof options !== 'object') return;
+  const o = data.options;
+  if (!o || typeof o !== 'object') return;
   event.waitUntil(
-    self.registration.showNotification(title, options).catch(() => {})
+    (async () => {
+      try {
+        await self.registration.showNotification(title, o);
+        const tag2 = `${o.tag || 'alarm'}-f`;
+        const o2 = Object.assign({}, o, { tag: tag2, renotify: false });
+        await new Promise((r) => setTimeout(r, 520));
+        await self.registration.showNotification(title, o2);
+      } catch (e) { /* ignore */ }
+    })()
   );
 });
 
