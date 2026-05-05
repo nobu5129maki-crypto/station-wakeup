@@ -1,4 +1,4 @@
-const CACHE_NAME = 'station-wakeup-v4';
+const CACHE_NAME = 'station-wakeup-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -19,6 +19,18 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((response) => response || fetch(event.request))
+  );
+});
+
+/** ページからの音声検知ではユーザ操作が無く、メインスレッドの showNotification だと振動が省略される端末があるため SW 側で表示する */
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || data.type !== 'alarm-haptic') return;
+  const title = data.title || '駅に到着します';
+  const options = data.options;
+  if (!options || typeof options !== 'object') return;
+  event.waitUntil(
+    self.registration.showNotification(title, options).catch(() => {})
   );
 });
 

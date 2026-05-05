@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Permissions-Policy" content="vibrate=*">
     <!-- HTMLのhead部分をこのように修正してください -->
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icon.svg">
@@ -186,6 +187,8 @@
         let notifyRepeatTimer = null;
         /** 監視開始のタップで resume し、アラーム時に iOS 等で音を鳴らす */
         let alarmAudioCtx = null;
+        /** アラーム中は画面スリープを防ぎ、通知＆振動の取りこぼしを減らす */
+        let alarmWakeLock = null;
 
         const ALARM_NOTIFY_TAG = 'station-wakeup-alarm';
 
@@ -257,20 +260,45 @@
             } catch (e) { /* ignore */ }
         }
 
-        /** インストール版 Android ではここ経由の vibrate が本体振動の主になりやすい */
-        function showAlarmHapticNotification() {
-            if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-            const title = '駅に到着します';
-            const options = {
+        /** SW 経由だと相対 icon が破綻することがあるため絶対 URL にする */
+        function buildAlarmNotifyOptions() {
+            let iconUrl = './icon.svg';
+            try {
+                iconUrl = new URL('icon.svg', window.location.href).href;
+            } catch (e) { /* ignore */ }
+            return {
                 body: 'アラームが鳴っています。アプリに戻って「アラームを止める」を押してください。',
                 tag: ALARM_NOTIFY_TAG,
                 requireInteraction: true,
                 renotify: true,
-                vibrate: [500, 200, 500, 200, 500, 200, 500, 200, 500, 200, 800],
+                vibrate: [400, 130, 400, 130, 400, 130, 600],
                 silent: false,
-                icon: './icon.svg',
-                badge: './icon.svg',
+                icon: iconUrl,
+                badge: iconUrl,
             };
+        }
+
+        async function acquireAlarmWakeLock() {
+            try {
+                if (!navigator.wakeLock || !navigator.wakeLock.request) return;
+                alarmWakeLock = await navigator.wakeLock.request('screen');
+            } catch (e) { /* ignore */ }
+        }
+
+        function releaseAlarmWakeLock() {
+            try {
+                if (alarmWakeLock && typeof alarmWakeLock.release === 'function') {
+                    alarmWakeLock.release();
+                }
+            } catch (e) { /* ignore */ }
+            alarmWakeLock = null;
+        }
+
+        /** メインスレッドの Notification より SW 経由の方が Android で振動が付きやすい */
+        async function showAlarmHapticNotification() {
+            if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+            const title = '駅に到着します';
+            const options = buildAlarmNotifyOptions();
 
             const viaPage = () => {
                 try {
@@ -278,15 +306,33 @@
                 } catch (e) { /* ignore */ }
             };
 
-            if ('serviceWorker' in navigator && window.isSecureContext) {
-                const timeoutMs = 4000;
-                const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('sw-ready-timeout')), timeoutMs));
-                Promise.race([navigator.serviceWorker.ready, timeout])
-                    .then((reg) => reg.showNotification(title, options))
-                    .catch(viaPage);
-            } else {
+            if (!('serviceWorker' in navigator) || !window.isSecureContext) {
                 viaPage();
+                return;
             }
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                if (reg.active) {
+                    reg.active.postMessage({ type: 'alarm-haptic', title, options });
+                    return;
+                }
+                await reg.showNotification(title, options);
+            } catch (e) {
+                try {
+                    const reg = await navigator.serviceWorker.ready;
+                    await reg.showNotification(title, options);
+                } catch (e2) {
+                    viaPage();
+                }
+            }
+        }
+
+        function pulseHardwareVibrate() {
+            if (typeof navigator.vibrate !== 'function' || !window.isSecureContext) return;
+            try {
+                navigator.vibrate(0);
+                navigator.vibrate([320, 90, 320, 90, 320]);
+            } catch (e) { /* ignore */ }
         }
 
         const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -554,32 +600,24 @@
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
             }
             closeAlarmNotificationsAndPageInstance();
+            void acquireAlarmWakeLock();
 
-            const longPattern = [1000, 500, 1000, 500, 1000];
-            const loopPattern = [1000, 500, 1000];
             const androidUa = isAndroidUserAgent();
 
             if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-                showAlarmHapticNotification();
-                notifyRepeatTimer = setInterval(() => showAlarmHapticNotification(), 4800);
+                void showAlarmHapticNotification();
+                notifyRepeatTimer = setInterval(() => {
+                    void showAlarmHapticNotification();
+                }, 3200);
             }
 
             if (typeof navigator.vibrate === 'function') {
-                try {
-                    navigator.vibrate(0);
-                    navigator.vibrate(longPattern);
-                } catch (e) { /* ignore */ }
-                setTimeout(() => {
-                    try {
-                        navigator.vibrate(0);
-                        navigator.vibrate(longPattern);
-                    } catch (e) { /* ignore */ }
-                }, 0);
+                [0, 40, 90, 160].forEach((ms) => {
+                    setTimeout(() => pulseHardwareVibrate(), ms);
+                });
                 vibrationInterval = setInterval(() => {
-                    try {
-                        navigator.vibrate(loopPattern);
-                    } catch (e) { /* ignore */ }
-                }, 3000);
+                    pulseHardwareVibrate();
+                }, 950);
             }
 
             /** 音声認識コールバック起因では navigator.vibrate が無視される端末がある。通知許可＋バイブに加え、Android は常に音でも通知する */
@@ -609,6 +647,7 @@
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
             }
             closeAlarmNotificationsAndPageInstance();
+            releaseAlarmWakeLock();
         }
 
         function startListening() {
@@ -641,16 +680,9 @@
                 tryStartRecognition(0, { fromUserClick: true });
             };
 
-            const needNotifyFirst = typeof Notification !== 'undefined'
-                && isAndroidUserAgent()
-                && Notification.permission === 'default';
-
-            if (needNotifyFirst) {
+            if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
                 Notification.requestPermission().finally(beginMonitor);
                 return;
-            }
-            if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-                Notification.requestPermission().catch(() => {});
             }
             beginMonitor();
         }
@@ -681,6 +713,12 @@
             alarmPanel.classList.add('hidden');
             alarmBox.classList.remove('vibrate-active');
             stopListening();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && alarmShowing) {
+                void acquireAlarmWakeLock();
+            }
         });
 
         renderSavedStations();
