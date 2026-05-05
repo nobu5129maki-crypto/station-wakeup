@@ -73,6 +73,21 @@
                 <input type="text" id="targetStation" placeholder="駅名を入力" 
                     class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg">
                 <p class="text-xs text-slate-500 mt-2">※「次は」「まもなく」などを入れると検知しやすくなります</p>
+
+                <div class="mt-5 pt-4 border-t border-slate-700">
+                    <label for="alarmVolumeRange" class="block text-sm font-medium text-amber-200/90 mb-2">アラーム音量（起こす強さ）</label>
+                    <div class="flex items-center gap-3">
+                        <input type="range" id="alarmVolumeRange" min="0" max="100" value="90"
+                            class="flex-1 h-2 rounded-full appearance-none bg-slate-600 accent-amber-500 cursor-pointer"
+                            aria-valuemin="0" aria-valuemax="100">
+                        <span id="alarmVolumeLabel" class="text-sm text-slate-200 w-11 text-right tabular-nums font-medium">90%</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1.5 leading-snug">スマホの<span class="text-slate-400">メディア音量</span>も最大に近づけてください。0% ではほとんど聞こえません。</p>
+                    <button type="button" id="alarmPreviewBtn" class="mt-2 text-sm text-amber-300/95 hover:text-amber-200 underline underline-offset-2 decoration-amber-500/50">
+                        今の設定で試聴する
+                    </button>
+                </div>
+
                 <div class="mt-3">
                     <p id="savedLabel" class="text-xs text-slate-500 mb-2 hidden">よく使う駅（タップで選択 / ×で削除）</p>
                     <div id="savedStationsWrap" class="flex flex-wrap gap-2"></div>
@@ -140,9 +155,48 @@
         const toggleBtn = document.getElementById('toggleBtn');
         const savedStationsWrap = document.getElementById('savedStationsWrap');
         const savedLabel = document.getElementById('savedLabel');
+        const alarmVolumeRange = document.getElementById('alarmVolumeRange');
+        const alarmVolumeLabel = document.getElementById('alarmVolumeLabel');
+        const alarmPreviewBtn = document.getElementById('alarmPreviewBtn');
 
         const STORAGE_KEY = 'stationWakeUp_savedStations';
+        const ALARM_VOLUME_KEY = 'stationWakeUp_alarmVolumePct';
         const MAX_SAVED = 15;
+
+        function getAlarmVolumePercent() {
+            if (!alarmVolumeRange) return 90;
+            const n = parseInt(alarmVolumeRange.value, 10);
+            return Math.max(0, Math.min(100, isNaN(n) ? 90 : n));
+        }
+
+        /** Web Audio のピークゲイン（0〜1 未満）。スライダーに連動 */
+        function getAlarmPeakGain() {
+            const pct = getAlarmVolumePercent();
+            if (pct <= 0) return 0;
+            const linear = pct / 100;
+            return Math.min(0.94, 0.06 + linear * 0.88);
+        }
+
+        function syncAlarmVolumeLabel() {
+            if (alarmVolumeLabel) alarmVolumeLabel.textContent = `${getAlarmVolumePercent()}%`;
+        }
+
+        function loadAlarmVolumeFromStorage() {
+            try {
+                const raw = localStorage.getItem(ALARM_VOLUME_KEY);
+                const n = raw != null ? parseInt(raw, 10) : 90;
+                const pct = Math.max(0, Math.min(100, isNaN(n) ? 90 : n));
+                if (alarmVolumeRange) alarmVolumeRange.value = String(pct);
+            } catch (e) { /* ignore */ }
+            syncAlarmVolumeLabel();
+        }
+
+        function persistAlarmVolume() {
+            try {
+                localStorage.setItem(ALARM_VOLUME_KEY, String(getAlarmVolumePercent()));
+            } catch (e) { /* ignore */ }
+            syncAlarmVolumeLabel();
+        }
 
         function loadSavedStations() {
             try {
@@ -282,26 +336,38 @@
             } catch (e) { /* ignore */ }
         }
 
-        /** Web バイブ非対応（主に iOS Safari）向けの短いビープ */
+        /** 起床向け: 高い／低い角波を素早く交互に鳴らす「サイレン調ビープ列」（音量はスライダー連動） */
         function playAlarmBuzzTone() {
             try {
+                const peak = getAlarmPeakGain();
+                if (peak <= 0.001) return;
                 const Ctor = window.AudioContext || window.webkitAudioContext;
                 if (!Ctor) return;
                 if (!alarmAudioCtx) alarmAudioCtx = new Ctor();
                 const buzz = () => {
                     try {
-                        const t0 = alarmAudioCtx.currentTime;
-                        const o = alarmAudioCtx.createOscillator();
-                        const g = alarmAudioCtx.createGain();
-                        o.type = 'square';
-                        o.frequency.setValueAtTime(880, t0);
-                        g.gain.setValueAtTime(0.0001, t0);
-                        g.gain.exponentialRampToValueAtTime(0.22, t0 + 0.02);
-                        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
-                        o.connect(g);
-                        g.connect(alarmAudioCtx.destination);
-                        o.start(t0);
-                        o.stop(t0 + 0.2);
+                        const ctx = alarmAudioCtx;
+                        const t0 = ctx.currentTime;
+                        const freqs = [1040, 740];
+                        const pulse = 0.075;
+                        const gap = 0.035;
+                        const steps = 14;
+                        const envAttack = 0.01;
+                        const envHigh = Math.max(0.0002, peak * 0.94);
+                        for (let i = 0; i < steps; i++) {
+                            const start = t0 + i * (pulse + gap);
+                            const o = ctx.createOscillator();
+                            const g = ctx.createGain();
+                            o.type = 'square';
+                            o.frequency.setValueAtTime(freqs[i % 2], start);
+                            g.gain.setValueAtTime(0.0001, start);
+                            g.gain.exponentialRampToValueAtTime(envHigh, start + envAttack);
+                            g.gain.exponentialRampToValueAtTime(0.0001, start + pulse);
+                            o.connect(g);
+                            g.connect(ctx.destination);
+                            o.start(start);
+                            o.stop(start + pulse + 0.015);
+                        }
                     } catch (e) { /* ignore */ }
                 };
                 if (alarmAudioCtx.state !== 'running') {
@@ -312,10 +378,13 @@
             } catch (e) { /* ignore */ }
         }
 
-        /** Android: スピーカーに近い低周波で「触覚」に近い揺れを狙う（端末差あり） */
+        /** Android: スピーカーに近い低周波で「触覚」に近い揺れを狙う（端末差あり）。ゲインはスライダー連動 */
         function playAlarmAndroidRumble() {
             if (!isAndroidUserAgent()) return;
             try {
+                const peak = getAlarmPeakGain();
+                if (peak <= 0.001) return;
+                const rumbleGain = Math.min(0.52, peak * 0.56);
                 const Ctor = window.AudioContext || window.webkitAudioContext;
                 if (!Ctor) return;
                 if (!alarmAudioCtx) alarmAudioCtx = new Ctor();
@@ -327,7 +396,7 @@
                         o.type = 'sine';
                         o.frequency.setValueAtTime(56, t0);
                         g.gain.setValueAtTime(0.0001, t0);
-                        g.gain.exponentialRampToValueAtTime(0.38, t0 + 0.05);
+                        g.gain.exponentialRampToValueAtTime(rumbleGain, t0 + 0.05);
                         g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
                         o.connect(g);
                         g.connect(alarmAudioCtx.destination);
@@ -784,10 +853,10 @@
                 alarmBuzzInterval = setInterval(() => {
                     playAlarmAndroidRumble();
                     setTimeout(() => playAlarmBuzzTone(), 140);
-                }, 2200);
+                }, 2000);
             } else if (typeof navigator.vibrate !== 'function') {
                 playAlarmBuzzTone();
-                alarmBuzzInterval = setInterval(() => playAlarmBuzzTone(), 2800);
+                alarmBuzzInterval = setInterval(() => playAlarmBuzzTone(), 2000);
             }
 
             if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) {
@@ -904,6 +973,18 @@
             hapticTestBtn.addEventListener('click', () => {
                 primeAlarmAudioFromUserGesture();
                 void pulseCapacitorHaptics();
+            });
+        }
+
+        loadAlarmVolumeFromStorage();
+        if (alarmVolumeRange) {
+            alarmVolumeRange.addEventListener('input', () => persistAlarmVolume());
+        }
+        if (alarmPreviewBtn) {
+            alarmPreviewBtn.addEventListener('click', () => {
+                primeAlarmAudioFromUserGesture();
+                playAlarmAndroidRumble();
+                playAlarmBuzzTone();
             });
         }
 
