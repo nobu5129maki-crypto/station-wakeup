@@ -38,17 +38,24 @@
             <p class="text-slate-400 mt-2 text-sm">車内アナウンスを聞き取り、目的地の手前で起こします</p>
         </header>
 
-        <!-- Status Display -->
-        <div id="debugStatus" class="bg-slate-800 p-3 rounded-lg text-xs font-mono text-slate-400 border border-slate-700 space-y-2">
-            <div>System: <span id="systemMsg" class="text-yellow-500">Initializing...</span></div>
-            <div class="text-[11px] text-slate-500 leading-relaxed border-t border-slate-700 pt-2 font-sans">
-                <span class="text-slate-400 font-medium">開き方（<code class="text-slate-500 font-mono">file://</code> 直開き不可）</span>
-                <ul class="mt-1.5 space-y-1.5 text-slate-300 list-none pl-0">
-                    <li><span class="text-slate-500">localhost …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">http://localhost:5500/index.html</code><span class="text-slate-500 block text-[10px] mt-0.5">※ポートは環境により異なります（例: Live Server 5500、<code class="font-mono text-slate-400">8080</code> など）</span></li>
-                    <li class="mt-2"><span class="text-slate-500">ループバック …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">http://127.0.0.1:5500/index.html</code></li>
-                    <li class="mt-2"><span class="text-slate-500">HTTPS …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">https://（あなたのサイト）/（このフォルダ）/index.html</code><span class="text-slate-500 block text-[10px] mt-0.5">例: GitHub Pages、自サーバ、クラウドの静的ホスティング</span></li>
-                </ul>
-            </div>
+        <!-- Status（通常は一行。問題時のみ開き方を展開） -->
+        <div id="debugStatus" class="bg-slate-800 rounded-lg text-xs font-mono text-slate-400 border border-slate-700 overflow-hidden">
+            <details id="setupHelpDetails" class="group">
+                <summary class="list-none cursor-pointer select-none p-3 flex flex-wrap items-center gap-x-2 gap-y-1 [&::-webkit-details-marker]:hidden marker:content-none">
+                    <span class="text-slate-500">状態</span>
+                    <span id="systemMsg" class="text-yellow-500 font-sans">Initializing...</span>
+                    <span class="text-[10px] text-slate-600 font-sans ml-auto opacity-80 group-open:hidden">タップで開き方を表示</span>
+                    <span class="text-[10px] text-slate-600 font-sans ml-auto hidden group-open:inline">閉じる</span>
+                </summary>
+                <div class="text-[11px] text-slate-500 leading-relaxed border-t border-slate-700 px-3 pb-3 pt-2 font-sans">
+                    <span class="text-slate-400 font-medium">開き方（<code class="text-slate-500 font-mono">file://</code> 直開き不可・<code class="font-mono text-amber-200/90">http://192.168.x.x</code> などは「非セキュア」扱いでマイク・振動が効かないことがあります）</span>
+                    <ul class="mt-1.5 space-y-1.5 text-slate-300 list-none pl-0">
+                        <li><span class="text-slate-500">localhost …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">http://localhost:5500/index.html</code><span class="text-slate-500 block text-[10px] mt-0.5">※ポートは環境により異なります（例: Live Server 5500、<code class="font-mono text-slate-400">8080</code> など）</span></li>
+                        <li class="mt-2"><span class="text-slate-500">ループバック …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">http://127.0.0.1:5500/index.html</code></li>
+                        <li class="mt-2"><span class="text-slate-500">HTTPS …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">https://（あなたのサイト）/（このフォルダ）/index.html</code><span class="text-slate-500 block text-[10px] mt-0.5">例: GitHub Pages、自サーバ、クラウドの静的ホスティング</span></li>
+                    </ul>
+                </div>
+            </details>
         </div>
 
         <!-- Setting Section -->
@@ -91,8 +98,8 @@
         </div>
 
         <footer class="text-center text-slate-500 text-xs pb-10 space-y-2">
-            <p>マイク・通知・オフライン用の設定は、上の「開き方」のとおり <code class="text-slate-400 font-mono text-[11px]">http://localhost:…</code> または <code class="text-slate-400 font-mono text-[11px]">https://…</code> で開いてください。</p>
-            <p>※ <span class="text-slate-400">Android でホーム画面に追加したアプリ</span>から使う場合、画面内だけの振動が効かず、通知の振動頼みになることがあります。監視開始時の「通知を許可」は許可するか、Android の設定でこのアプリ（サイト）の通知をオンにしてください。マナーモードや「振動オフ」だと鳴りません。</p>
+            <p>マイク・通知・オフライン用の設定は、状態欄の「開き方」のとおり <code class="text-slate-400 font-mono text-[11px]">http://localhost:…</code> または <code class="text-slate-400 font-mono text-[11px]">https://…</code> で開いてください（<code class="text-slate-400 font-mono text-[11px]">http://192.168.x.x</code> だと非セキュア扱いで制限されることがあります）。</p>
+            <p>※ Android では、アナウンス検知はユーザー操作ではないため <code class="text-slate-400 font-mono text-[11px]">navigator.vibrate</code> が効かないことがあります。監視開始時に出る「通知を許可」は必ず許可し、通知のバイブ＆アラーム音に頼ってください。ホーム画面に追加したアプリでは特に通知が重要です。マナーモードや「振動オフ」だと鳴りません。</p>
             <p>※ iPhone の Safari では Web の振動 API に非対応のため、短いアラーム音でお知らせします（監視開始ボタンで音声の準備をします）。</p>
         </footer>
     </div>
@@ -182,15 +189,7 @@
 
         const ALARM_NOTIFY_TAG = 'station-wakeup-alarm';
 
-        /** Android のホーム画面インストール時、Web の vibrate は効かないことが多く通知の vibrate が実質メインになる */
-        function isInstalledAndroidWebApp() {
-            if (!/Android/i.test(navigator.userAgent || '')) return false;
-            try {
-                return window.matchMedia('(display-mode: standalone)').matches
-                    || window.matchMedia('(display-mode: fullscreen)').matches;
-            } catch (e) {
-                return false;
-            }
+            return /Android/i.test(navigator.userAgent || '');
         }
 
         function registerServiceWorkerForAlarms() {
@@ -319,8 +318,8 @@
 
             rec.onstart = () => {
                 hadRecognitionOnStart = true;
-                systemMsg.textContent = "Listening...";
-                systemMsg.className = "text-blue-400";
+                systemMsg.textContent = "聞き取り中";
+                systemMsg.className = "text-blue-400 font-sans";
             };
 
             rec.onresult = (event) => {
@@ -346,8 +345,8 @@
             rec.onend = () => {
                 if (isListening) {
                     clearTimeout(retryStartTimer);
-                    systemMsg.textContent = "Auto-Restarting...";
-                    systemMsg.className = "text-yellow-500";
+                    systemMsg.textContent = "再接続中…";
+                    systemMsg.className = "text-yellow-500 font-sans";
                     clearTimeout(restartTimer);
                     if (Date.now() - lastInstanceCreatedAt >= INSTANCE_TTL_MS) {
                         recognition = createRecognition();
@@ -357,8 +356,8 @@
                         if (isListening) tryStartRecognition(0, { fromUserClick: false });
                     }, RESTART_MS);
                 } else {
-                    systemMsg.textContent = "Stopped";
-                    systemMsg.className = "text-slate-400";
+                    systemMsg.textContent = "停止";
+                    systemMsg.className = "text-slate-400 font-sans";
                 }
             };
 
@@ -368,12 +367,12 @@
                 }
                 if (isListening && event.error === 'not-allowed' && hadRecognitionOnStart) {
                     systemMsg.textContent = "再接続中…";
-                    systemMsg.className = "text-yellow-500";
+                    systemMsg.className = "text-yellow-500 font-sans";
                     return;
                 }
                 if (isListening && event.error === 'network') {
                     systemMsg.textContent = "ネットワークの不調です。自動で再接続します…";
-                    systemMsg.className = "text-yellow-500";
+                    systemMsg.className = "text-yellow-500 font-sans";
                     return;
                 }
                 if (isListening) {
@@ -386,7 +385,7 @@
                         msg = '音声認識サービスに接続できません。しばらくしてから再試行するか、通信環境を確認してください。';
                     }
                     systemMsg.textContent = msg;
-                    systemMsg.className = "text-red-500";
+                    systemMsg.className = "text-red-500 font-sans";
                 }
                 console.warn('Speech Recognition Error:', event.error);
             };
@@ -420,11 +419,11 @@
                     toggleBtn.classList.remove('pulse');
                     toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
                     systemMsg.textContent = '音声認識を開始できませんでした。ページを一度再読み込みするか、しばらくしてからもう一度お試しください。';
-                    systemMsg.className = "text-red-500";
+                    systemMsg.className = "text-red-500 font-sans";
                 } else {
                     recognition = createRecognition();
                     systemMsg.textContent = "認識の再接続に失敗しました。自動で再試行しています…";
-                    systemMsg.className = "text-yellow-500";
+                    systemMsg.className = "text-yellow-500 font-sans";
                     retryStartTimer = setTimeout(() => {
                         if (!isListening) return;
                         tryStartRecognition(0, { fromUserClick: false });
@@ -433,16 +432,36 @@
             }
         }
 
+        const setupHelpDetails = document.getElementById('setupHelpDetails');
+
         if (SpeechRecognitionCtor) {
             recognition = createRecognition();
 
             if (!window.isSecureContext) {
-                systemMsg.textContent = "⚠️ file:// では動きません。上の「localhost」または「HTTPS」の例のように URL を変えて開いてください";
-                systemMsg.className = "text-amber-500";
+                systemMsg.textContent = "要対応: URL を localhost / HTTPS に";
+                systemMsg.className = "text-amber-500 font-sans";
+                if (setupHelpDetails) setupHelpDetails.open = true;
             } else {
-                systemMsg.textContent = "Ready";
-                systemMsg.className = "text-green-500";
+                let insecureHttpLan = false;
+                try {
+                    const { protocol, hostname } = window.location;
+                    const h = (hostname || '').toLowerCase();
+                    if (protocol === 'http:' && h !== 'localhost' && h !== '127.0.0.1' && !h.endsWith('.localhost')) {
+                        insecureHttpLan = true;
+                    }
+                } catch (e) { /* ignore */ }
+                if (insecureHttpLan) {
+                    systemMsg.textContent = "要確認: この URL では振動等が無効な場合あり";
+                    systemMsg.className = "text-amber-500 font-sans";
+                    if (setupHelpDetails) setupHelpDetails.open = true;
+                } else {
+                    systemMsg.textContent = "準備OK";
+                    systemMsg.className = "text-green-500 font-sans";
+                    if (setupHelpDetails) setupHelpDetails.open = false;
+                }
             }
+        } else {
+            if (setupHelpDetails) setupHelpDetails.open = true;
         }
 
         function updateLog(text, isFinal) {
@@ -535,7 +554,7 @@
 
             const longPattern = [1000, 500, 1000, 500, 1000];
             const loopPattern = [1000, 500, 1000];
-            const installedAndroid = isInstalledAndroidWebApp();
+            const androidUa = isAndroidUserAgent();
 
             if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
                 showAlarmHapticNotification();
@@ -560,7 +579,8 @@
                 }, 3000);
             }
 
-            if (installedAndroid) {
+            /** 音声認識コールバック起因では navigator.vibrate が無視される端末がある。通知許可＋バイブに加え、Android は常に音でも通知する */
+            if (androidUa) {
                 playAlarmBuzzTone();
                 alarmBuzzInterval = setInterval(() => playAlarmBuzzTone(), 2600);
             } else if (typeof navigator.vibrate !== 'function') {
@@ -619,7 +639,7 @@
             };
 
             const needNotifyFirst = typeof Notification !== 'undefined'
-                && isInstalledAndroidWebApp()
+                && isAndroidUserAgent()
                 && Notification.permission === 'default';
 
             if (needNotifyFirst) {
