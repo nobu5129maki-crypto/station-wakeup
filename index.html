@@ -29,6 +29,13 @@
             40% { transform: translate(1px, -1px) rotate(1deg); }
             50% { transform: translate(-1px, 2px) rotate(-1deg); }
         }
+        @keyframes alarm-flash-bg {
+            0%, 100% { opacity: 0.15; }
+            50% { opacity: 0.55; }
+        }
+        .alarm-flash-bg {
+            animation: alarm-flash-bg 1.1s ease-in-out infinite;
+        }
     </style>
 </head>
 <body class="bg-slate-900 text-white min-h-screen flex flex-col items-center p-6 font-sans">
@@ -76,6 +83,10 @@
                 <span id="statusIcon">🎤</span>
                 <span id="statusText">監視を開始する</span>
             </button>
+            <p id="hapticTestHint" class="hidden text-center text-[11px] text-slate-500 mt-3 leading-snug">公式アプリ版をお使いのとき、下のボタンで本体の振動を試せます。</p>
+            <button type="button" id="hapticTestBtn" class="hidden w-full mt-2 py-2 rounded-lg border border-slate-600 text-slate-300 text-sm hover:bg-slate-700/80 transition-colors">
+                振動を試す（1回だけ）
+            </button>
         </div>
 
         <!-- Transcript Log -->
@@ -88,21 +99,39 @@
 
         <!-- Alarm Modal -->
         <div id="alarmPanel" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
-            <div id="alarmBox" class="bg-slate-800 w-full max-w-sm p-8 rounded-3xl text-center border-4 border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.5)]">
+            <div id="alarmFlashBg" class="pointer-events-none fixed inset-0 z-40 hidden bg-red-600 alarm-flash-bg" aria-hidden="true"></div>
+            <div id="alarmBox" class="relative z-50 bg-slate-800 w-full max-w-sm p-8 rounded-3xl text-center border-4 border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.5)]">
                 <div class="text-6xl mb-4">🔔</div>
                 <h2 class="text-2xl font-bold text-red-500 mb-2">駅に到着します！</h2>
                 <p id="matchText" class="text-xl mb-4 font-semibold"></p>
-                <p class="text-xs text-slate-400 mb-6 leading-snug">振動が弱い機種は、<span class="text-slate-300">画面のどこかを一度タップ</span>すると振動しやすくなります（ブラウザの仕様です）。</p>
+                <p class="text-xs text-slate-400 mb-6 leading-snug">ブラウザでは振動が出ないことがあります。<span class="text-slate-300">画面をタップ</span>すると試せる機種があります。画面全体の赤点滅と音も合わせて確認してください。</p>
                 <button id="stopAlarmBtn" class="w-full bg-red-600 py-4 rounded-xl font-bold text-xl hover:bg-red-500 active:scale-95 transition-transform">
                     アラームを止める
                 </button>
             </div>
         </div>
 
-        <footer class="text-center text-slate-500 text-xs pb-10 space-y-1.5 leading-relaxed">
-            <p><strong class="text-slate-400 font-medium">開き方</strong>　<code class="font-mono text-[11px] text-slate-400">https://…</code> またはパソコン開発時は <code class="font-mono text-[11px] text-slate-400">localhost</code>。スマホから PC の <code class="font-mono text-[11px] text-slate-400">192.168.x.x</code> だけだとマイクなどが使えないことがあります。</p>
-            <p><strong class="text-slate-400 font-medium">Android で振動しない</strong>　Chrome／ホーム画面アプリでは、機種によって Web のバイブが無効です。<strong class="text-slate-400">BUILD-ANDROID.txt</strong> の手順で APK を入れると、本体の振動（ネイティブ）が使えます。</p>
-            <p><strong class="text-slate-400 font-medium">iPhone（Safari）</strong>　振動は使えないため、アラームは短い音でお知らせします。</p>
+        <footer class="text-slate-500 text-xs pb-10 leading-relaxed space-y-3">
+            <p class="text-center text-slate-400 text-[13px] font-medium">アラームの頼り方</p>
+            <ul class="list-disc pl-5 space-y-1.5 text-slate-400 max-w-md mx-auto">
+                <li>まず <strong class="text-slate-300">マナーモードをオフ</strong>、端末とブラウザの <strong class="text-slate-300">音量・通知をオン</strong>にしてください。</li>
+                <li>検知すると <strong class="text-slate-300">大きな表示・赤い背景の点滅・音</strong>で知らせます（これが基本です）。</li>
+                <li>いわゆる「バイブ（本体の振動）」は、<strong class="text-slate-300">Chrome やホーム画面のショートカットだけでは、機種・Google の仕様で出ないことがほとんど</strong>です。こちらのアプリだけの不具合ではありません。</li>
+            </ul>
+            <details class="max-w-md mx-auto rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-left">
+                <summary class="cursor-pointer text-slate-300 text-[13px] font-medium py-1">本体の振動まで必ず使いたい場合</summary>
+                <div class="mt-2 text-slate-400 space-y-2 pb-1 border-t border-slate-700 pt-2">
+                    <p>スマホに「普通のアプリ」のように入れる必要があります。<strong class="text-slate-300">パソコン</strong>と無料の <strong class="text-slate-300">Android Studio</strong> があれば、付属の手順どおりに実行できます。</p>
+                    <ol class="list-decimal pl-5 space-y-1">
+                        <li>このフォルダをパソコンに置き、中の「説明どおり」にコマンドを実行する。</li>
+                        <li>Android Studio でスマホへアプリを送る（USB か無線）。</li>
+                        <li>以降はそのアプリを開くと、画面上に「<strong class="text-slate-300">振動を試す</strong>」ボタンが出ます。ここで震えれば成功です。</li>
+                    </ol>
+                    <p class="text-[11px] text-slate-500">コマンドや英語の画面に不安がある場合は、身近な方や店に手伝ってもらうのが確実です。手順の全文は、このフォルダ内のテキスト「<span class="text-slate-400">BUILD-ANDROID</span>」にあります。</p>
+                </div>
+            </details>
+            <p class="text-center text-[11px] text-slate-600">開き方の注意: <code class="font-mono text-slate-500">https</code> または <code class="font-mono text-slate-500">localhost</code>。スマホだけで PC の LAN アドレス（例: 192.168…）だとマイクが使えないことがあります。</p>
+            <p class="text-center text-[11px]">iPhone（Safari）は Web では振動できません。音でお知らせします。</p>
         </footer>
     </div>
 
@@ -173,9 +202,20 @@
         const systemMsg = document.getElementById('systemMsg');
         const transcriptLog = document.getElementById('transcriptLog');
         const alarmPanel = document.getElementById('alarmPanel');
+        const alarmFlashBg = document.getElementById('alarmFlashBg');
         const alarmBox = document.getElementById('alarmBox');
         const matchText = document.getElementById('matchText');
         const stopAlarmBtn = document.getElementById('stopAlarmBtn');
+        const hapticTestBtn = document.getElementById('hapticTestBtn');
+        const hapticTestHint = document.getElementById('hapticTestHint');
+
+        function updateNativeHapticTestUI() {
+            if (!hapticTestBtn || !hapticTestHint) return;
+            const c = window.Capacitor;
+            const isCap = !!(c && typeof c.isNativePlatform === 'function' && c.isNativePlatform());
+            hapticTestBtn.classList.toggle('hidden', !isCap);
+            hapticTestHint.classList.toggle('hidden', !isCap);
+        }
 
         let isListening = false;
         let recognition = null;
@@ -256,7 +296,7 @@
                         o.type = 'square';
                         o.frequency.setValueAtTime(880, t0);
                         g.gain.setValueAtTime(0.0001, t0);
-                        g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.02);
+                        g.gain.exponentialRampToValueAtTime(0.22, t0 + 0.02);
                         g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
                         o.connect(g);
                         g.connect(alarmAudioCtx.destination);
@@ -287,7 +327,7 @@
                         o.type = 'sine';
                         o.frequency.setValueAtTime(56, t0);
                         g.gain.setValueAtTime(0.0001, t0);
-                        g.gain.exponentialRampToValueAtTime(0.3, t0 + 0.05);
+                        g.gain.exponentialRampToValueAtTime(0.38, t0 + 0.05);
                         g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
                         o.connect(g);
                         g.connect(alarmAudioCtx.destination);
@@ -343,7 +383,13 @@
         function getCapacitorHapticsPlugin() {
             const c = window.Capacitor;
             if (!c) return null;
-            if (c.Plugins && c.Plugins.Haptics) return c.Plugins.Haptics;
+            if (c.Plugins) {
+                if (c.Plugins.Haptics) return c.Plugins.Haptics;
+                const keys = Object.keys(c.Plugins);
+                for ( let i = 0; i < keys.length; i++) {
+                    if (keys[i].toLowerCase() === 'haptics') return c.Plugins[keys[i]];
+                }
+            }
             if (typeof c.getPlugin === 'function') {
                 try {
                     return c.getPlugin('Haptics');
@@ -352,22 +398,22 @@
             return null;
         }
 
-        /** Capacitor Android APK 内でのみ有効。Web の通知振動が無効な端末で本体バイブを使う */
+        /** Capacitor Android APK の Vibrator。Web の振動が無効な端末への本対策。 */
         async function pulseCapacitorHaptics() {
             try {
                 const c = window.Capacitor;
                 if (!c || typeof c.isNativePlatform !== 'function' || !c.isNativePlatform()) return;
                 const H = getCapacitorHapticsPlugin();
                 if (!H) return;
-                if (typeof H.notification === 'function') {
-                    await H.notification({ type: 'WARNING' });
-                }
-                if (typeof H.impact === 'function') {
-                    await H.impact({ style: 'HEAVY' });
-                }
-                if (typeof H.vibrate === 'function') {
-                    await H.vibrate({ duration: 500 });
-                }
+                const v = async (ms) => {
+                    if (typeof H.vibrate === 'function') await H.vibrate({ duration: ms });
+                };
+                if (typeof H.notification === 'function') await H.notification({ type: 'WARNING' });
+                if (typeof H.impact === 'function') await H.impact({ style: 'HEAVY' });
+                await v(450);
+                await new Promise((r) => setTimeout(r, 80));
+                await v(450);
+                if (typeof H.impact === 'function') await H.impact({ style: 'MEDIUM' });
             } catch (e) { /* ignore */ }
         }
 
@@ -676,6 +722,9 @@
             
             matchText.textContent = `「${detectedText}」を検知しました`;
             alarmPanel.classList.remove('hidden');
+            if (alarmFlashBg) {
+                alarmFlashBg.classList.remove('hidden');
+            }
             alarmBox.classList.add('vibrate-active');
 
             // バイブレーション開始
@@ -745,7 +794,7 @@
                 void pulseCapacitorHaptics();
                 nativeHapticsInterval = setInterval(() => {
                     void pulseCapacitorHaptics();
-                }, 850);
+                }, 650);
             }
         }
 
@@ -817,6 +866,9 @@
             if (recognition) {
                 try { recognition.stop(); } catch (e) {}
             }
+            alarmPanel.classList.add('hidden');
+            alarmBox.classList.remove('vibrate-active');
+            if (alarmFlashBg) alarmFlashBg.classList.add('hidden');
             stopVibration();
             statusText.textContent = '監視を開始する';
             toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
@@ -833,8 +885,6 @@
         });
 
         stopAlarmBtn.addEventListener('click', () => {
-            alarmPanel.classList.add('hidden');
-            alarmBox.classList.remove('vibrate-active');
             stopListening();
         });
 
@@ -850,11 +900,24 @@
             }
         }, true);
 
+        if (hapticTestBtn) {
+            hapticTestBtn.addEventListener('click', () => {
+                primeAlarmAudioFromUserGesture();
+                void pulseCapacitorHaptics();
+            });
+        }
+
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && alarmShowing) {
                 void acquireAlarmWakeLock();
             }
+            updateNativeHapticTestUI();
         });
+        window.addEventListener('focus', updateNativeHapticTestUI);
+
+        updateNativeHapticTestUI();
+        requestAnimationFrame(updateNativeHapticTestUI);
+        setTimeout(updateNativeHapticTestUI, 600);
 
         renderSavedStations();
     </script>
