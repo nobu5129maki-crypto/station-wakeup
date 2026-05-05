@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Permissions-Policy" content="vibrate=*">
+    <!-- HTMLのhead部分をこのように修正してください -->
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon.svg">
+    <title>駅到着アラーム - アナウンス検知</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .vibrate-active {
+            animation: shake 0.5s infinite;
+            background-color: #ef4444 !important;
+        }
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center p-6 font-sans">
+
+    <div class="max-w-md w-full space-y-8 mt-10">
+        <header class="text-center">
+            <h1 class="text-3xl font-bold text-blue-400">Station WakeUp</h1>
+            <p class="text-slate-400 mt-2 text-sm">車内アナウンスを聞き取り、目的地の手前で起こします</p>
+        </header>
+
+        <!-- Status（通常は一行。問題時のみ開き方を展開） -->
+        <div id="debugStatus" class="bg-slate-800 rounded-lg text-xs font-mono text-slate-400 border border-slate-700 overflow-hidden">
+            <details id="setupHelpDetails" class="group">
+                <summary class="list-none cursor-pointer select-none p-3 flex flex-wrap items-center gap-x-2 gap-y-1 [&::-webkit-details-marker]:hidden marker:content-none">
+                    <span class="text-slate-500">状態</span>
+                    <span id="systemMsg" class="text-yellow-500 font-sans">Initializing...</span>
+                    <span class="text-[10px] text-slate-600 font-sans ml-auto opacity-80 group-open:hidden">タップで開き方を表示</span>
+                    <span class="text-[10px] text-slate-600 font-sans ml-auto hidden group-open:inline">閉じる</span>
+                </summary>
+                <div class="text-[11px] text-slate-500 leading-relaxed border-t border-slate-700 px-3 pb-3 pt-2 font-sans">
+                    <span class="text-slate-400 font-medium">開き方（<code class="text-slate-500 font-mono">file://</code> 直開き不可・<code class="font-mono text-amber-200/90">http://192.168.x.x</code> などは「非セキュア」扱いでマイク・振動が効かないことがあります）</span>
+                    <ul class="mt-1.5 space-y-1.5 text-slate-300 list-none pl-0">
+                        <li><span class="text-slate-500">localhost …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">http://localhost:5500/index.html</code><span class="text-slate-500 block text-[10px] mt-0.5">※ポートは環境により異なります（例: Live Server 5500、<code class="font-mono text-slate-400">8080</code> など）</span></li>
+                        <li class="mt-2"><span class="text-slate-500">ループバック …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">http://127.0.0.1:5500/index.html</code></li>
+                        <li class="mt-2"><span class="text-slate-500">HTTPS …</span><br><code class="block mt-0.5 break-all text-amber-200/95 rounded bg-slate-900/50 px-2 py-1 font-mono">https://（あなたのサイト）/（このフォルダ）/index.html</code><span class="text-slate-500 block text-[10px] mt-0.5">例: GitHub Pages、自サーバ、クラウドの静的ホスティング</span></li>
+                    </ul>
+                </div>
+            </details>
+        </div>
+
+        <!-- Setting Section -->
+        <div class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700">
+            <div class="mb-6">
+                <label class="block text-sm font-medium mb-2 text-blue-300">検知する駅名 (例: 品川、次、まもなく)</label>
+                <input type="text" id="targetStation" placeholder="駅名を入力" 
+                    class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg">
+                <p class="text-xs text-slate-500 mt-2">※「次は」「まもなく」などを入れると検知しやすくなります</p>
+                <div class="mt-3">
+                    <p id="savedLabel" class="text-xs text-slate-500 mb-2 hidden">よく使う駅（タップで選択 / ×で削除）</p>
+                    <div id="savedStationsWrap" class="flex flex-wrap gap-2"></div>
+                </div>
+            </div>
+
+            <button id="toggleBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 text-lg shadow-lg">
+                <span id="statusIcon">🎤</span>
+                <span id="statusText">監視を開始する</span>
+            </button>
+        </div>
+
+        <!-- Transcript Log -->
+        <div class="bg-black/30 p-4 rounded-xl border border-slate-700 h-40 flex flex-col">
+            <h2 class="text-xs uppercase tracking-widest text-slate-500 mb-2 font-bold">聞き取り中の音声データ</h2>
+            <div id="transcriptLog" class="overflow-y-auto flex-1 text-sm text-slate-300 space-y-1 font-mono">
+                <p class="italic text-slate-500 text-center mt-4">開始ボタンを押すと聞き取りを開始します...</p>
+            </div>
+        </div>
+
+        <!-- Alarm Modal -->
+        <div id="alarmPanel" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+            <div id="alarmBox" class="bg-slate-800 w-full max-w-sm p-8 rounded-3xl text-center border-4 border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.5)]">
+                <div class="text-6xl mb-4">🔔</div>
+                <h2 class="text-2xl font-bold text-red-500 mb-2">駅に到着します！</h2>
+                <p id="matchText" class="text-xl mb-4 font-semibold"></p>
+                <p class="text-xs text-slate-400 mb-6 leading-snug">振動が弱い機種は、<span class="text-slate-300">画面のどこかを一度タップ</span>すると振動しやすくなります（ブラウザの仕様です）。</p>
+                <button id="stopAlarmBtn" class="w-full bg-red-600 py-4 rounded-xl font-bold text-xl hover:bg-red-500 active:scale-95 transition-transform">
+                    アラームを止める
+                </button>
+            </div>
+        </div>
+
+        <footer class="text-center text-slate-500 text-xs pb-10 space-y-1.5 leading-relaxed">
+            <p><strong class="text-slate-400 font-medium">開き方</strong>　<code class="font-mono text-[11px] text-slate-400">https://…</code> またはパソコン開発時は <code class="font-mono text-[11px] text-slate-400">localhost</code>。スマホから PC の <code class="font-mono text-[11px] text-slate-400">192.168.x.x</code> だけだとマイクなどが使えないことがあります。</p>
+            <p><strong class="text-slate-400 font-medium">Android で振動しない</strong>　Chrome／ホーム画面アプリでは、機種によって Web のバイブが無効です。<strong class="text-slate-400">BUILD-ANDROID.txt</strong> の手順で APK を入れると、本体の振動（ネイティブ）が使えます。</p>
+            <p><strong class="text-slate-400 font-medium">iPhone（Safari）</strong>　振動は使えないため、アラームは短い音でお知らせします。</p>
+        </footer>
+    </div>
+
+    <script>
+        const targetInput = document.getElementById('targetStation');
+        const toggleBtn = document.getElementById('toggleBtn');
+        const savedStationsWrap = document.getElementById('savedStationsWrap');
+        const savedLabel = document.getElementById('savedLabel');
+
+        const STORAGE_KEY = 'stationWakeUp_savedStations';
+        const MAX_SAVED = 15;
+
+        function loadSavedStations() {
+            try {
+                const json = localStorage.getItem(STORAGE_KEY);
+                return json ? JSON.parse(json) : [];
+            } catch { return []; }
+        }
+
+        function saveStation(name) {
+            const trimmed = name.trim();
+            if (!trimmed) return;
+            let list = loadSavedStations().filter(s => s !== trimmed);
+            list.unshift(trimmed);
+            list = list.slice(0, MAX_SAVED);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+            renderSavedStations();
+        }
+
+        function removeSavedStation(name) {
+            let list = loadSavedStations().filter(s => s !== name);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+            renderSavedStations();
+        }
+
+        function renderSavedStations() {
+            const list = loadSavedStations();
+            savedLabel.classList.toggle('hidden', list.length === 0);
+            savedStationsWrap.innerHTML = list.map(name => {
+                const safe = String(name).replace(/"/g, '&quot;');
+                return `<span class="saved-chip inline-flex items-center gap-1 bg-slate-600 hover:bg-slate-500 rounded-full px-3 py-1.5 text-sm cursor-pointer transition-colors" data-station="${safe}">
+                    <span>${escapeHtml(name)}</span>
+                    <button type="button" class="remove-btn opacity-60 hover:opacity-100 text-slate-300 hover:text-red-400 text-base leading-none w-5 h-5 flex items-center justify-center rounded-full hover:bg-slate-600" aria-label="削除">×</button>
+                </span>`;
+            }).join('');
+            savedStationsWrap.querySelectorAll('.saved-chip').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    if (e.target.closest('.remove-btn')) return;
+                    targetInput.value = el.dataset.station || '';
+                    targetInput.focus();
+                });
+            });
+            savedStationsWrap.querySelectorAll('.remove-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const name = btn.closest('.saved-chip').dataset.station || '';
+                    removeSavedStation(name);
+                });
+            });
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+        const statusText = document.getElementById('statusText');
+        const systemMsg = document.getElementById('systemMsg');
+        const transcriptLog = document.getElementById('transcriptLog');
+        const alarmPanel = document.getElementById('alarmPanel');
+        const alarmBox = document.getElementById('alarmBox');
+        const matchText = document.getElementById('matchText');
+        const stopAlarmBtn = document.getElementById('stopAlarmBtn');
+
+        let isListening = false;
+        let recognition = null;
+        let restartTimer = null;
+        let retryStartTimer = null;
+        let vibrationInterval = null;
+        let alarmNotificationRef = null;
+        let alarmBuzzInterval = null;
+        /** Android インストールアプリ: 通知 vibrate の再送 */
+        let notifyRepeatTimer = null;
+        /** 監視開始のタップで resume し、アラーム時に iOS 等で音を鳴らす */
+        let alarmAudioCtx = null;
+        /** アラーム中は画面スリープを防ぎ、通知＆振動の取りこぼしを減らす */
+        let alarmWakeLock = null;
+        /** Capacitor ネイティブの繰り返しバイブ（Web だけでは振動しない端末向け） */
+        let nativeHapticsInterval = null;
+
+        const ALARM_NOTIFY_TAG = 'station-wakeup-alarm';
+
+        function isAndroidUserAgent() {
+            return /Android/i.test(navigator.userAgent || '');
+        }
+
+        function registerServiceWorkerForAlarms() {
+            if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+            navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+        }
+        registerServiceWorkerForAlarms();
+
+        function closeMatchingSWNotifications() {
+            if (!('serviceWorker' in navigator)) return Promise.resolve();
+            return navigator.serviceWorker.ready
+                .then((reg) => {
+                    if (typeof reg.getNotifications !== 'function') return;
+                    return reg.getNotifications().then((list) => {
+                        (list || []).forEach((n) => {
+                            try {
+                                const t = n.tag || '';
+                                if (t === ALARM_NOTIFY_TAG || t.startsWith(ALARM_NOTIFY_TAG + '-')) {
+                                    n.close();
+                                }
+                            } catch (e) { /* ignore */ }
+                        });
+                    });
+                })
+                .catch(() => {});
+        }
+
+        function closeAlarmNotificationsAndPageInstance() {
+            if (alarmNotificationRef) {
+                try { alarmNotificationRef.close(); } catch (e) { /* ignore */ }
+                alarmNotificationRef = null;
+            }
+            void closeMatchingSWNotifications();
+        }
+
+        function primeAlarmAudioFromUserGesture() {
+            try {
+                const Ctor = window.AudioContext || window.webkitAudioContext;
+                if (!Ctor) return;
+                if (!alarmAudioCtx) alarmAudioCtx = new Ctor();
+                const p = alarmAudioCtx.resume();
+                if (p && typeof p.then === 'function') p.catch(() => {});
+            } catch (e) { /* ignore */ }
+        }
+
+        /** Web バイブ非対応（主に iOS Safari）向けの短いビープ */
+        function playAlarmBuzzTone() {
+            try {
+                const Ctor = window.AudioContext || window.webkitAudioContext;
+                if (!Ctor) return;
+                if (!alarmAudioCtx) alarmAudioCtx = new Ctor();
+                const buzz = () => {
+                    try {
+                        const t0 = alarmAudioCtx.currentTime;
+                        const o = alarmAudioCtx.createOscillator();
+                        const g = alarmAudioCtx.createGain();
+                        o.type = 'square';
+                        o.frequency.setValueAtTime(880, t0);
+                        g.gain.setValueAtTime(0.0001, t0);
+                        g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.02);
+                        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+                        o.connect(g);
+                        g.connect(alarmAudioCtx.destination);
+                        o.start(t0);
+                        o.stop(t0 + 0.2);
+                    } catch (e) { /* ignore */ }
+                };
+                if (alarmAudioCtx.state !== 'running') {
+                    alarmAudioCtx.resume().then(buzz).catch(() => {});
+                } else {
+                    buzz();
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        /** Android: スピーカーに近い低周波で「触覚」に近い揺れを狙う（端末差あり） */
+        function playAlarmAndroidRumble() {
+            if (!isAndroidUserAgent()) return;
+            try {
+                const Ctor = window.AudioContext || window.webkitAudioContext;
+                if (!Ctor) return;
+                if (!alarmAudioCtx) alarmAudioCtx = new Ctor();
+                const rumble = () => {
+                    try {
+                        const t0 = alarmAudioCtx.currentTime;
+                        const o = alarmAudioCtx.createOscillator();
+                        const g = alarmAudioCtx.createGain();
+                        o.type = 'sine';
+                        o.frequency.setValueAtTime(56, t0);
+                        g.gain.setValueAtTime(0.0001, t0);
+                        g.gain.exponentialRampToValueAtTime(0.3, t0 + 0.05);
+                        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
+                        o.connect(g);
+                        g.connect(alarmAudioCtx.destination);
+                        o.start(t0);
+                        o.stop(t0 + 0.45);
+                    } catch (e) { /* ignore */ }
+                };
+                if (alarmAudioCtx.state !== 'running') {
+                    alarmAudioCtx.resume().then(rumble).catch(() => {});
+                } else {
+                    rumble();
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        /** SW 経由だと相対 icon が破綻することがあるため絶対 URL にする。tag は毎回ユニーク（更新扱いにされず振動しやすい） */
+        function buildAlarmNotifyOptions() {
+            let iconUrl = './icon.svg';
+            try {
+                iconUrl = new URL('icon.svg', window.location.href).href;
+            } catch (e) { /* ignore */ }
+            const stamp = Date.now();
+            return {
+                body: 'アラームが鳴っています。アプリに戻って「アラームを止める」を押してください。',
+                tag: `${ALARM_NOTIFY_TAG}-${stamp}`,
+                requireInteraction: false,
+                renotify: false,
+                vibrate: [320, 110, 320, 110, 320, 130, 480],
+                silent: false,
+                lang: 'ja',
+                timestamp: stamp,
+                icon: iconUrl,
+                badge: iconUrl,
+            };
+        }
+
+        async function acquireAlarmWakeLock() {
+            try {
+                if (!navigator.wakeLock || !navigator.wakeLock.request) return;
+                alarmWakeLock = await navigator.wakeLock.request('screen');
+            } catch (e) { /* ignore */ }
+        }
+
+        function releaseAlarmWakeLock() {
+            try {
+                if (alarmWakeLock && typeof alarmWakeLock.release === 'function') {
+                    alarmWakeLock.release();
+                }
+            } catch (e) { /* ignore */ }
+            alarmWakeLock = null;
+        }
+
+        function getCapacitorHapticsPlugin() {
+            const c = window.Capacitor;
+            if (!c) return null;
+            if (c.Plugins && c.Plugins.Haptics) return c.Plugins.Haptics;
+            if (typeof c.getPlugin === 'function') {
+                try {
+                    return c.getPlugin('Haptics');
+                } catch (e) { /* ignore */ }
+            }
+            return null;
+        }
+
+        /** Capacitor Android APK 内でのみ有効。Web の通知振動が無効な端末で本体バイブを使う */
+        async function pulseCapacitorHaptics() {
+            try {
+                const c = window.Capacitor;
+                if (!c || typeof c.isNativePlatform !== 'function' || !c.isNativePlatform()) return;
+                const H = getCapacitorHapticsPlugin();
+                if (!H) return;
+                if (typeof H.notification === 'function') {
+                    await H.notification({ type: 'WARNING' });
+                }
+                if (typeof H.impact === 'function') {
+                    await H.impact({ style: 'HEAVY' });
+                }
+                if (typeof H.vibrate === 'function') {
+                    await H.vibrate({ duration: 500 });
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        /**
+         * Android: フォアグラウンドでは SW 経由より「ページからの reg.showNotification」の方が振動が付くことがある。
+         * ブラウザ / PWA: それでも付かない機種は Capacitor（BUILD-ANDROID.txt）が必要。
+         */
+        async function showAlarmHapticNotification() {
+            if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+            await closeMatchingSWNotifications();
+            const title = '駅に到着します';
+            const options = buildAlarmNotifyOptions();
+
+            const viaPage = () => {
+                try {
+                    alarmNotificationRef = new Notification(title, options);
+                } catch (e) { /* ignore */ }
+            };
+
+            if (!window.isSecureContext) {
+                viaPage();
+                return;
+            }
+
+            if (!('serviceWorker' in navigator)) {
+                viaPage();
+                return;
+            }
+
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                if (isAndroidUserAgent()) {
+                    await reg.showNotification(title, options);
+                    await new Promise((r) => setTimeout(r, 480));
+                    const o2 = Object.assign({}, options, { tag: `${options.tag}-a2`, renotify: false });
+                    await reg.showNotification(title, o2);
+                    return;
+                }
+                if (reg.active) {
+                    reg.active.postMessage({ type: 'alarm-haptic', title, options });
+                    return;
+                }
+                await reg.showNotification(title, options);
+            } catch (e) {
+                try {
+                    const reg = await navigator.serviceWorker.ready;
+                    await reg.showNotification(title, options);
+                } catch (e2) {
+                    viaPage();
+                }
+            }
+        }
+
+        function pulseHardwareVibrate() {
+            if (typeof navigator.vibrate !== 'function') return;
+            try {
+                navigator.vibrate(0);
+                navigator.vibrate([320, 90, 320, 90, 320]);
+            } catch (e) { /* ignore */ }
+        }
+
+        const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+        /** セッション終了後に次を起動するまでの待ち（短すぎると InvalidStateError） */
+        const RESTART_MS = 600;
+        /** Chrome 等で約10〜20分で内部セッションが不安定になりやすいため、定期的に認識インスタンスを作り直す */
+        const INSTANCE_TTL_MS = 8 * 60 * 1000;
+        /** start() がコケたときの再試行（新インスタンス） */
+        const MAX_START_RETRIES = 5;
+        /** 前回インスタンス生成から8分経過したら、次の onend で1回だけ作り直す */
+        let lastInstanceCreatedAt = 0;
+        /** 今回の「監視中」に一度でも onstart したか（初回拒否と再開前の一時 not-allowed を分ける） */
+        let hadRecognitionOnStart = false;
+        let alarmShowing = false;
+        /** アラーム1回の間に一度だけ：タップで確実に navigator.vibrate を通す */
+        let alarmGestureVibrateDone = false;
+
+        function clearSpeechTimers() {
+            clearTimeout(restartTimer);
+            clearTimeout(retryStartTimer);
+            restartTimer = null;
+            retryStartTimer = null;
+        }
+
+        function attachRecognition(rec) {
+            rec.lang = 'ja-JP';
+            rec.continuous = true;
+            rec.interimResults = true;
+            try {
+                rec.maxAlternatives = 5;
+            } catch (e) { /* 未対応ブラウザ */ }
+
+            rec.onstart = () => {
+                hadRecognitionOnStart = true;
+                systemMsg.textContent = "聞き取り中";
+                systemMsg.className = "text-blue-400 font-sans";
+            };
+
+            rec.onresult = (event) => {
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const res = event.results[i];
+                    const isFinal = res.isFinal;
+                    const parts = [];
+                    for (let a = 0; a < res.length; a++) {
+                        const t = res[a].transcript;
+                        if (t && t.trim()) {
+                            parts.push(t.trim());
+                            checkMatch(t);
+                        }
+                    }
+                    if (parts.length) {
+                        const line = parts.join(' ');
+                        updateLog(line, isFinal);
+                        checkMatch(line);
+                    }
+                }
+            };
+
+            rec.onend = () => {
+                if (isListening) {
+                    clearTimeout(retryStartTimer);
+                    systemMsg.textContent = "再接続中…";
+                    systemMsg.className = "text-yellow-500 font-sans";
+                    clearTimeout(restartTimer);
+                    if (Date.now() - lastInstanceCreatedAt >= INSTANCE_TTL_MS) {
+                        recognition = createRecognition();
+                        lastInstanceCreatedAt = Date.now();
+                    }
+                    restartTimer = setTimeout(() => {
+                        if (isListening) tryStartRecognition(0, { fromUserClick: false });
+                    }, RESTART_MS);
+                } else {
+                    systemMsg.textContent = "停止";
+                    systemMsg.className = "text-slate-400 font-sans";
+                }
+            };
+
+            rec.onerror = (event) => {
+                if (event.error === 'no-speech' || event.error === 'aborted') {
+                    return;
+                }
+                if (isListening && event.error === 'not-allowed' && hadRecognitionOnStart) {
+                    systemMsg.textContent = "再接続中…";
+                    systemMsg.className = "text-yellow-500 font-sans";
+                    return;
+                }
+                if (isListening && event.error === 'network') {
+                    systemMsg.textContent = "ネットワークの不調です。自動で再接続します…";
+                    systemMsg.className = "text-yellow-500 font-sans";
+                    return;
+                }
+                if (isListening) {
+                    let msg = `Error: ${event.error}`;
+                    if (event.error === 'not-allowed') {
+                        msg = 'マイクが許可されていません。HTTPS または localhost の URL で開き直してください（画面上の「開き方」を参照）。';
+                    } else if (event.error === 'audio-capture') {
+                        msg = 'マイクが使用できません。他のアプリが使用中か確認してください。';
+                    } else if (event.error === 'service-not-allowed') {
+                        msg = '音声認識サービスに接続できません。しばらくしてから再試行するか、通信環境を確認してください。';
+                    }
+                    systemMsg.textContent = msg;
+                    systemMsg.className = "text-red-500 font-sans";
+                }
+                console.warn('Speech Recognition Error:', event.error);
+            };
+        }
+
+        function createRecognition() {
+            if (!SpeechRecognitionCtor) return null;
+            const rec = new SpeechRecognitionCtor();
+            attachRecognition(rec);
+            return rec;
+        }
+
+        /** recognition.start() は長時間後や直前の stop 直後に例外になることがあるため再試行する */
+        function tryStartRecognition(attempt, opts) {
+            const fromUserClick = opts && opts.fromUserClick;
+            if (!isListening || !SpeechRecognitionCtor) return;
+            if (!recognition) recognition = createRecognition();
+            if (!recognition) return;
+            try {
+                recognition.start();
+            } catch (e) {
+                console.warn('recognition.start failed', attempt, e);
+                if (attempt < MAX_START_RETRIES) {
+                    recognition = createRecognition();
+                    retryStartTimer = setTimeout(() => {
+                        tryStartRecognition(attempt + 1, opts);
+                    }, 350 + attempt * 200);
+                } else if (fromUserClick) {
+                    isListening = false;
+                    statusText.textContent = '監視を開始する';
+                    toggleBtn.classList.remove('pulse');
+                    toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
+                    systemMsg.textContent = '音声認識を開始できませんでした。ページを一度再読み込みするか、しばらくしてからもう一度お試しください。';
+                    systemMsg.className = "text-red-500 font-sans";
+                } else {
+                    recognition = createRecognition();
+                    systemMsg.textContent = "認識の再接続に失敗しました。自動で再試行しています…";
+                    systemMsg.className = "text-yellow-500 font-sans";
+                    retryStartTimer = setTimeout(() => {
+                        if (!isListening) return;
+                        tryStartRecognition(0, { fromUserClick: false });
+                    }, 3000);
+                }
+            }
+        }
+
+        const setupHelpDetails = document.getElementById('setupHelpDetails');
+
+        if (SpeechRecognitionCtor) {
+            recognition = createRecognition();
+
+            if (!window.isSecureContext) {
+                systemMsg.textContent = "要対応: URL を localhost / HTTPS に";
+                systemMsg.className = "text-amber-500 font-sans";
+                if (setupHelpDetails) setupHelpDetails.open = true;
+            } else {
+                let insecureHttpLan = false;
+                try {
+                    const { protocol, hostname } = window.location;
+                    const h = (hostname || '').toLowerCase();
+                    if (protocol === 'http:' && h !== 'localhost' && h !== '127.0.0.1' && !h.endsWith('.localhost')) {
+                        insecureHttpLan = true;
+                    }
+                } catch (e) { /* ignore */ }
+                if (insecureHttpLan) {
+                    systemMsg.textContent = "要確認: この URL では振動等が無効な場合あり";
+                    systemMsg.className = "text-amber-500 font-sans";
+                    if (setupHelpDetails) setupHelpDetails.open = true;
+                } else {
+                    systemMsg.textContent = "準備OK";
+                    systemMsg.className = "text-green-500 font-sans";
+                    if (setupHelpDetails) setupHelpDetails.open = false;
+                }
+            }
+        } else {
+            systemMsg.textContent = "音声認識に非対応のブラウザです";
+            systemMsg.className = "text-red-500 font-sans";
+            if (setupHelpDetails) setupHelpDetails.open = true;
+        }
+
+        function updateLog(text, isFinal) {
+            const firstChild = transcriptLog.firstChild;
+            if (firstChild && !firstChild.dataset.final) {
+                firstChild.textContent = `> ${text}`;
+                if (isFinal) {
+                    firstChild.dataset.final = "true";
+                    firstChild.classList.replace('text-slate-400', 'text-slate-200');
+                }
+            } else {
+                const p = document.createElement('p');
+                p.textContent = `> ${text}`;
+                p.className = isFinal ? 'text-slate-200 border-l-2 border-blue-500 pl-2' : 'text-slate-400 border-l-2 border-slate-600 pl-2';
+                if (isFinal) p.dataset.final = "true";
+                transcriptLog.prepend(p);
+            }
+            if (transcriptLog.childNodes.length > 25) transcriptLog.removeChild(transcriptLog.lastChild);
+        }
+
+        /** 漢字・カタカナ・ひらがなの表記ゆれを吸収して比較用に正規化 */
+        function normalizeForMatch(str) {
+            let s = typeof str.normalize === 'function' ? str.normalize('NFKC') : str;
+            // カタカナ → ひらがな（Unicode範囲で一括変換）
+            s = s.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+            // よくある表記ゆれ（音声認識で漢字→ひらがなになりやすいもの）
+            s = s.replace(/御/g, 'お');
+            s = s.replace(/ヶ/g, 'が');
+            s = s.replace(/ヵ/g, 'か');
+            return s;
+        }
+
+        /** 正規表現用にエスケープ */
+        function escapeRegex(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function checkMatch(text) {
+            const target = targetInput.value.trim();
+            if (!target || !isListening) return;
+            const normTarget = normalizeForMatch(target);
+            const normText = normalizeForMatch(text);
+            // 部分一致だが、「新」+ 駅名（例: 新お茶の水）は別駅なので除外
+            const escaped = escapeRegex(normTarget);
+            const pattern = new RegExp(`(?<!新)${escaped}`);
+            if (pattern.test(normText)) {
+                triggerAlarm(text);
+            }
+        }
+
+        function triggerAlarm(detectedText) {
+            if (alarmShowing) return;
+            alarmShowing = true;
+            alarmGestureVibrateDone = false;
+            if (typeof navigator.vibrate === 'function') {
+                try {
+                    navigator.vibrate(0);
+                    navigator.vibrate([400, 100, 400, 100, 400]);
+                } catch (e) { /* ignore */ }
+            }
+            void pulseCapacitorHaptics();
+            isListening = false;
+            clearSpeechTimers();
+            if (recognition) {
+                try { recognition.stop(); } catch (e) {}
+            }
+            
+            matchText.textContent = `「${detectedText}」を検知しました`;
+            alarmPanel.classList.remove('hidden');
+            alarmBox.classList.add('vibrate-active');
+
+            // バイブレーション開始
+            startVibration();
+            
+            // 視覚的なフィードバック
+            statusText.textContent = '検知しました！';
+            toggleBtn.classList.replace('bg-red-600', 'bg-green-600');
+            toggleBtn.classList.remove('pulse');
+        }
+
+        function startVibration() {
+            if (vibrationInterval) {
+                clearInterval(vibrationInterval);
+                vibrationInterval = null;
+            }
+            if (alarmBuzzInterval) {
+                clearInterval(alarmBuzzInterval);
+                alarmBuzzInterval = null;
+            }
+            if (notifyRepeatTimer) {
+                clearInterval(notifyRepeatTimer);
+                notifyRepeatTimer = null;
+            }
+            if (nativeHapticsInterval) {
+                clearInterval(nativeHapticsInterval);
+                nativeHapticsInterval = null;
+            }
+            if (typeof navigator.vibrate === 'function') {
+                try { navigator.vibrate(0); } catch (e) { /* ignore */ }
+            }
+            closeAlarmNotificationsAndPageInstance();
+            void acquireAlarmWakeLock();
+
+            const androidUa = isAndroidUserAgent();
+
+            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                void showAlarmHapticNotification();
+                notifyRepeatTimer = setInterval(() => {
+                    void showAlarmHapticNotification();
+                }, 2600);
+            }
+
+            if (typeof navigator.vibrate === 'function') {
+                [0, 40, 90, 160].forEach((ms) => {
+                    setTimeout(() => pulseHardwareVibrate(), ms);
+                });
+                vibrationInterval = setInterval(() => {
+                    pulseHardwareVibrate();
+                }, 950);
+            }
+
+            /** 音声認識コールバック起因では navigator.vibrate が無視される端末がある。通知許可＋バイブに加え、Android は低周波音＋ビープで補助 */
+            if (androidUa) {
+                playAlarmAndroidRumble();
+                playAlarmBuzzTone();
+                alarmBuzzInterval = setInterval(() => {
+                    playAlarmAndroidRumble();
+                    setTimeout(() => playAlarmBuzzTone(), 140);
+                }, 2200);
+            } else if (typeof navigator.vibrate !== 'function') {
+                playAlarmBuzzTone();
+                alarmBuzzInterval = setInterval(() => playAlarmBuzzTone(), 2800);
+            }
+
+            if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) {
+                void pulseCapacitorHaptics();
+                nativeHapticsInterval = setInterval(() => {
+                    void pulseCapacitorHaptics();
+                }, 850);
+            }
+        }
+
+        function stopVibration() {
+            if (vibrationInterval) {
+                clearInterval(vibrationInterval);
+                vibrationInterval = null;
+            }
+            if (alarmBuzzInterval) {
+                clearInterval(alarmBuzzInterval);
+                alarmBuzzInterval = null;
+            }
+            if (notifyRepeatTimer) {
+                clearInterval(notifyRepeatTimer);
+                notifyRepeatTimer = null;
+            }
+            if (nativeHapticsInterval) {
+                clearInterval(nativeHapticsInterval);
+                nativeHapticsInterval = null;
+            }
+            if (typeof navigator.vibrate === 'function') {
+                try { navigator.vibrate(0); } catch (e) { /* ignore */ }
+            }
+            closeAlarmNotificationsAndPageInstance();
+            releaseAlarmWakeLock();
+        }
+
+        function startListening() {
+            if (!SpeechRecognitionCtor) return;
+            const station = targetInput.value.trim();
+            if (!station) {
+                alert('先に駅名を入力してください。');
+                return;
+            }
+
+            saveStation(station);
+
+            const beginMonitor = () => {
+                primeAlarmAudioFromUserGesture();
+                if (typeof navigator.vibrate === 'function') {
+                    try { navigator.vibrate(15); } catch (e) { /* ignore */ }
+                }
+
+                clearSpeechTimers();
+                hadRecognitionOnStart = false;
+                lastInstanceCreatedAt = Date.now();
+                isListening = true;
+                transcriptLog.innerHTML = '';
+                recognition = createRecognition();
+
+                statusText.textContent = '監視中...';
+                toggleBtn.classList.replace('bg-blue-600', 'bg-red-600');
+                toggleBtn.classList.add('pulse');
+
+                tryStartRecognition(0, { fromUserClick: true });
+            };
+
+            if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+                Notification.requestPermission().finally(beginMonitor);
+                return;
+            }
+            beginMonitor();
+        }
+
+        function stopListening() {
+            alarmShowing = false;
+            isListening = false;
+            clearSpeechTimers();
+            if (recognition) {
+                try { recognition.stop(); } catch (e) {}
+            }
+            stopVibration();
+            statusText.textContent = '監視を開始する';
+            toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
+            toggleBtn.classList.replace('bg-green-600', 'bg-blue-600');
+            toggleBtn.classList.remove('pulse');
+        }
+
+        toggleBtn.addEventListener('click', () => {
+            if (isListening || alarmBox.classList.contains('vibrate-active')) {
+                stopListening();
+            } else {
+                startListening();
+            }
+        });
+
+        stopAlarmBtn.addEventListener('click', () => {
+            alarmPanel.classList.add('hidden');
+            alarmBox.classList.remove('vibrate-active');
+            stopListening();
+        });
+
+        alarmPanel.addEventListener('pointerdown', () => {
+            if (!alarmShowing || alarmGestureVibrateDone) return;
+            alarmGestureVibrateDone = true;
+            void pulseCapacitorHaptics();
+            if (typeof navigator.vibrate === 'function') {
+                try {
+                    navigator.vibrate(0);
+                    navigator.vibrate([450, 120, 450, 120, 450, 120, 700]);
+                } catch (e) { /* ignore */ }
+            }
+        }, true);
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && alarmShowing) {
+                void acquireAlarmWakeLock();
+            }
+        });
+
+        renderSavedStations();
+    </script>
+</body>
+</html>
