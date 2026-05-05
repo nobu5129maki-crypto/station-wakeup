@@ -1,0 +1,8 @@
+{
+  "appId": "jp.stationwakeup.app",
+  "appName": "Station WakeUp",
+  "webDir": "public",
+  "server": {
+    "androidScheme": "https"
+  }
+}

@@ -101,7 +101,7 @@
 
         <footer class="text-center text-slate-500 text-xs pb-10 space-y-1.5 leading-relaxed">
             <p><strong class="text-slate-400 font-medium">開き方</strong>　<code class="font-mono text-[11px] text-slate-400">https://…</code> またはパソコン開発時は <code class="font-mono text-[11px] text-slate-400">localhost</code>。スマホから PC の <code class="font-mono text-[11px] text-slate-400">192.168.x.x</code> だけだとマイクなどが使えないことがあります。</p>
-            <p><strong class="text-slate-400 font-medium">Android</strong>　監視開始時の「通知を許可」はオンにしてください。アナウンス検知のタイミングでは画面内の振動だけに頼れない機種があります（通知の振動と音で知らせます）。マナーモードや振動オフでは鳴りません。</p>
+            <p><strong class="text-slate-400 font-medium">Android で振動しない</strong>　Chrome／ホーム画面アプリでは、機種によって Web のバイブが無効です。<strong class="text-slate-400">BUILD-ANDROID.txt</strong> の手順で APK を入れると、本体の振動（ネイティブ）が使えます。</p>
             <p><strong class="text-slate-400 font-medium">iPhone（Safari）</strong>　振動は使えないため、アラームは短い音でお知らせします。</p>
         </footer>
     </div>
@@ -190,6 +190,8 @@
         let alarmAudioCtx = null;
         /** アラーム中は画面スリープを防ぎ、通知＆振動の取りこぼしを減らす */
         let alarmWakeLock = null;
+        /** Capacitor ネイティブの繰り返しバイブ（Web だけでは振動しない端末向け） */
+        let nativeHapticsInterval = null;
 
         const ALARM_NOTIFY_TAG = 'station-wakeup-alarm';
 
@@ -338,7 +340,41 @@
             alarmWakeLock = null;
         }
 
-        /** メインスレッドの Notification より SW 経由の方が Android で振動が付きやすい */
+        function getCapacitorHapticsPlugin() {
+            const c = window.Capacitor;
+            if (!c) return null;
+            if (c.Plugins && c.Plugins.Haptics) return c.Plugins.Haptics;
+            if (typeof c.getPlugin === 'function') {
+                try {
+                    return c.getPlugin('Haptics');
+                } catch (e) { /* ignore */ }
+            }
+            return null;
+        }
+
+        /** Capacitor Android APK 内でのみ有効。Web の通知振動が無効な端末で本体バイブを使う */
+        async function pulseCapacitorHaptics() {
+            try {
+                const c = window.Capacitor;
+                if (!c || typeof c.isNativePlatform !== 'function' || !c.isNativePlatform()) return;
+                const H = getCapacitorHapticsPlugin();
+                if (!H) return;
+                if (typeof H.notification === 'function') {
+                    await H.notification({ type: 'WARNING' });
+                }
+                if (typeof H.impact === 'function') {
+                    await H.impact({ style: 'HEAVY' });
+                }
+                if (typeof H.vibrate === 'function') {
+                    await H.vibrate({ duration: 500 });
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        /**
+         * Android: フォアグラウンドでは SW 経由より「ページからの reg.showNotification」の方が振動が付くことがある。
+         * ブラウザ / PWA: それでも付かない機種は Capacitor（BUILD-ANDROID.txt）が必要。
+         */
         async function showAlarmHapticNotification() {
             if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
             await closeMatchingSWNotifications();
@@ -351,12 +387,25 @@
                 } catch (e) { /* ignore */ }
             };
 
-            if (!('serviceWorker' in navigator) || !window.isSecureContext) {
+            if (!window.isSecureContext) {
                 viaPage();
                 return;
             }
+
+            if (!('serviceWorker' in navigator)) {
+                viaPage();
+                return;
+            }
+
             try {
                 const reg = await navigator.serviceWorker.ready;
+                if (isAndroidUserAgent()) {
+                    await reg.showNotification(title, options);
+                    await new Promise((r) => setTimeout(r, 480));
+                    const o2 = Object.assign({}, options, { tag: `${options.tag}-a2`, renotify: false });
+                    await reg.showNotification(title, o2);
+                    return;
+                }
                 if (reg.active) {
                     reg.active.postMessage({ type: 'alarm-haptic', title, options });
                     return;
@@ -373,7 +422,7 @@
         }
 
         function pulseHardwareVibrate() {
-            if (typeof navigator.vibrate !== 'function' || !window.isSecureContext) return;
+            if (typeof navigator.vibrate !== 'function') return;
             try {
                 navigator.vibrate(0);
                 navigator.vibrate([320, 90, 320, 90, 320]);
@@ -612,12 +661,13 @@
             if (alarmShowing) return;
             alarmShowing = true;
             alarmGestureVibrateDone = false;
-            if (typeof navigator.vibrate === 'function' && window.isSecureContext) {
+            if (typeof navigator.vibrate === 'function') {
                 try {
                     navigator.vibrate(0);
                     navigator.vibrate([400, 100, 400, 100, 400]);
                 } catch (e) { /* ignore */ }
             }
+            void pulseCapacitorHaptics();
             isListening = false;
             clearSpeechTimers();
             if (recognition) {
@@ -649,6 +699,10 @@
             if (notifyRepeatTimer) {
                 clearInterval(notifyRepeatTimer);
                 notifyRepeatTimer = null;
+            }
+            if (nativeHapticsInterval) {
+                clearInterval(nativeHapticsInterval);
+                nativeHapticsInterval = null;
             }
             if (typeof navigator.vibrate === 'function') {
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
@@ -686,6 +740,13 @@
                 playAlarmBuzzTone();
                 alarmBuzzInterval = setInterval(() => playAlarmBuzzTone(), 2800);
             }
+
+            if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) {
+                void pulseCapacitorHaptics();
+                nativeHapticsInterval = setInterval(() => {
+                    void pulseCapacitorHaptics();
+                }, 850);
+            }
         }
 
         function stopVibration() {
@@ -700,6 +761,10 @@
             if (notifyRepeatTimer) {
                 clearInterval(notifyRepeatTimer);
                 notifyRepeatTimer = null;
+            }
+            if (nativeHapticsInterval) {
+                clearInterval(nativeHapticsInterval);
+                nativeHapticsInterval = null;
             }
             if (typeof navigator.vibrate === 'function') {
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
@@ -776,7 +841,8 @@
         alarmPanel.addEventListener('pointerdown', () => {
             if (!alarmShowing || alarmGestureVibrateDone) return;
             alarmGestureVibrateDone = true;
-            if (typeof navigator.vibrate === 'function' && window.isSecureContext) {
+            void pulseCapacitorHaptics();
+            if (typeof navigator.vibrate === 'function') {
                 try {
                     navigator.vibrate(0);
                     navigator.vibrate([450, 120, 450, 120, 450, 120, 700]);

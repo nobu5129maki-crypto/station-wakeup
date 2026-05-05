@@ -1,0 +1,24 @@
+Station WakeUp — Android で「本体のバイブ」を確実に使う手順
+============================================================
+
+Chrome / ホーム画面の Web アプリのままでは、機種・OS の制限で Web の振動が無効になることがあります。
+このフォルダの「Android プロジェクト」から APK をビルドすると、端末のバイブレータ（ネイティブ API）を使えます。
+
+前提: PC に Node.js（LTS）と Android Studio を入れていること。
+
+■ 初回だけ
+
+   npm install
+   npm run android:sync
+   npm run android:open
+
+Android Studio で「Run」して端末にインストール。
+
+■ HTML / JS を直したあと
+
+   npm run android:sync
+
+■ メモ
+
+- アプリの AndroidManifest に VIBRATE / RECORD_AUDIO を記載済みです。
+- ビルド対象のファイルは scripts/copy-public.cjs が public/ にコピーしたものです（ルートの index.html を編集したら必ず android:sync）。
