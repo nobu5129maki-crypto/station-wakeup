@@ -119,7 +119,7 @@
                 <div class="text-6xl mb-4">🔔</div>
                 <h2 class="text-2xl font-bold text-red-500 mb-2">駅に到着します！</h2>
                 <p id="matchText" class="text-xl mb-4 font-semibold"></p>
-                <p class="text-xs text-slate-400 mb-6 leading-snug">ブラウザでは振動が出ないことがあります。<span class="text-slate-300">画面をタップ</span>すると試せる機種があります。画面全体の赤点滅と音も合わせて確認してください。</p>
+                <p class="text-xs text-slate-400 mb-6 leading-snug">大きな表示・画面全体の赤い点滅・アラーム音で知らせます。止めるまで繰り返し鳴ります。</p>
                 <button id="stopAlarmBtn" class="w-full bg-red-600 py-4 rounded-xl font-bold text-xl hover:bg-red-500 active:scale-95 transition-transform">
                     アラームを止める
                 </button>
@@ -130,23 +130,9 @@
             <p class="text-center text-slate-400 text-[13px] font-medium">アラームの頼り方</p>
             <ul class="list-disc pl-5 space-y-1.5 text-slate-400 max-w-md mx-auto">
                 <li>まず <strong class="text-slate-300">マナーモードをオフ</strong>、端末とブラウザの <strong class="text-slate-300">音量・通知をオン</strong>にしてください。</li>
-                <li>検知すると <strong class="text-slate-300">大きな表示・赤い背景の点滅・音</strong>で知らせます（これが基本です）。</li>
-                <li>いわゆる「バイブ（本体の振動）」は、<strong class="text-slate-300">Chrome やホーム画面のショートカットだけでは、機種・Google の仕様で出ないことがほとんど</strong>です。こちらのアプリだけの不具合ではありません。</li>
+                <li>検知すると <strong class="text-slate-300">大きな表示・赤い背景の点滅・アラーム音</strong>で知らせます。</li>
             </ul>
-            <details class="max-w-md mx-auto rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-left">
-                <summary class="cursor-pointer text-slate-300 text-[13px] font-medium py-1">本体の振動まで必ず使いたい場合</summary>
-                <div class="mt-2 text-slate-400 space-y-2 pb-1 border-t border-slate-700 pt-2">
-                    <p>スマホに「普通のアプリ」のように入れる必要があります。<strong class="text-slate-300">パソコン</strong>と無料の <strong class="text-slate-300">Android Studio</strong> があれば、付属の手順どおりに実行できます。</p>
-                    <ol class="list-decimal pl-5 space-y-1">
-                        <li>このフォルダをパソコンに置き、中の「説明どおり」にコマンドを実行する。</li>
-                        <li>Android Studio でスマホへアプリを送る（USB か無線）。</li>
-                        <li>以降はそのアプリを開くと、画面上に「<strong class="text-slate-300">振動を試す</strong>」ボタンが出ます。ここで震えれば成功です。</li>
-                    </ol>
-                    <p class="text-[11px] text-slate-500">コマンドや英語の画面に不安がある場合は、身近な方や店に手伝ってもらうのが確実です。手順の全文は、このフォルダ内のテキスト「<span class="text-slate-400">BUILD-ANDROID</span>」にあります。</p>
-                </div>
-            </details>
             <p class="text-center text-[11px] text-slate-600">開き方の注意: <code class="font-mono text-slate-500">https</code> または <code class="font-mono text-slate-500">localhost</code>。スマホだけで PC の LAN アドレス（例: 192.168…）だとマイクが使えないことがあります。</p>
-            <p class="text-center text-[11px]">iPhone（Safari）は Web では振動できません。音でお知らせします。</p>
         </footer>
     </div>
 
