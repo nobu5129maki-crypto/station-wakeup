@@ -4,6 +4,7 @@
   "scripts": {
     "copy": "node scripts/copy-public.cjs",
     "build": "node scripts/copy-public.cjs",
+    "test": "node scripts/test-speech-match.cjs",
     "sync": "npm run copy && npx cap sync",
     "android:sync": "npm run copy && npx cap sync android",
     "android:open": "npx cap open android",
