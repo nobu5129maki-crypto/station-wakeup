@@ -50,6 +50,8 @@
             background: transparent;
             color: #cbd5e1;
         }
+        .native-only { display: none; }
+        body.is-native-app .native-only { display: block; }
     </style>
 </head>
 <body class="bg-slate-900 text-white min-h-screen flex flex-col items-center p-6 font-sans">
@@ -65,6 +67,13 @@
             <p id="officialAppBannerTitle" class="font-semibold text-slate-200">公式アプリを確認中…</p>
             <p id="officialAppBannerHint" class="text-[11px] text-slate-500 mt-1">端末の起動方法を確認しています。</p>
             <div id="officialAppActions" class="mt-3 flex flex-col gap-2"></div>
+        </div>
+
+        <!-- 公式アプリのみ：ホーム画面に見つからないときの追加ボタン -->
+        <div id="homePinBanner" class="native-only rounded-xl border border-blue-500/40 bg-blue-950/40 px-4 py-3 text-sm leading-snug">
+            <p class="font-semibold text-blue-100">ホーム画面にアイコンを出す</p>
+            <p id="homePinHint" class="text-[11px] text-blue-100/70 mt-1 leading-relaxed">インストール後、端末によってはアプリ一覧にだけ入ります。下のボタンでホーム画面へ追加できます。</p>
+            <button type="button" id="homePinBtn" class="mt-3 w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors">ホーム画面に追加する</button>
         </div>
 
         <!-- Status（通常は一行。問題時のみ開き方を展開） -->
@@ -233,6 +242,45 @@
             if (vibLabel) vibLabel.textContent = 'バイブレーション';
             const footerTitle = document.querySelector('#pageFooter > p');
             if (footerTitle) footerTitle.textContent = 'アラームの頼り方';
+        }
+
+        function getHomeScreenPlugin() {
+            return getCapacitorPlugin('HomeScreen');
+        }
+
+        async function setupHomePinUi() {
+            const banner = document.getElementById('homePinBanner');
+            const btn = document.getElementById('homePinBtn');
+            const hint = document.getElementById('homePinHint');
+            if (!banner || !btn) return;
+            if (!isCapacitorNative()) {
+                banner.style.display = 'none';
+                return;
+            }
+            const P = getHomeScreenPlugin();
+            if (P && typeof P.canPin === 'function') {
+                try {
+                    const res = await P.canPin();
+                    if (res && res.supported === false) {
+                        if (hint) {
+                            hint.textContent = 'アプリ一覧で「Station WakeUp」（青い電車アイコン）を長押しし、「ホーム画面に追加」を選んでください。';
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+            }
+            btn.addEventListener('click', async () => {
+                const plugin = getHomeScreenPlugin();
+                if (!plugin || typeof plugin.pinToHome !== 'function') {
+                    if (hint) hint.textContent = 'アプリ一覧から Station WakeUp を長押ししてホームに追加してください。';
+                    return;
+                }
+                try {
+                    const res = await plugin.pinToHome();
+                    if (hint) hint.textContent = (res && res.message) || 'ホーム画面への追加確認が出たら「追加」をタップしてください。';
+                } catch (e) {
+                    if (hint) hint.textContent = '追加に失敗しました。アプリ一覧から長押しでホームに追加してください。';
+                }
+            });
         }
 
         function getAlarmVolumePercent() {
@@ -1746,6 +1794,7 @@
         syncVibrateToggleUI();
         updateVibrateCapabilityUI();
         updateOfficialAppUI();
+        setupHomePinUi();
         maybeAutoOpenOfficialApp();
         if (alarmVolumeRange) {
             alarmVolumeRange.addEventListener('input', () => persistAlarmVolume());

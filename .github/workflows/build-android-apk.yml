@@ -61,7 +61,7 @@ jobs:
           cp "$SRC" downloads/station-wakeup.apk
           cp "$SRC" public/downloads/station-wakeup.apk
           # ZIP（Chromeの警告が出にくい配布用）
-          printf '%s\n' \
+            printf '%s\n' \
             'Station WakeUp 公式アプリ' \
             '' \
             'このZIPは有料ノート購入者向けの公式配布です。' \
@@ -72,7 +72,9 @@ jobs:
             '1. ZIPを開き StationWakeUp-Official.apk を取り出す' \
             '2. APKを開く' \
             '3. 「詳細」→「それでもインストール」で進める' \
-            '4. ホーム画面の Station WakeUp から起動' \
+            '4. 「開く」→ ホーム追加の確認が出たら「追加」' \
+            '5. 見当たらないときはアプリ一覧の青い電車アイコン「Station WakeUp」' \
+            '6. アプリ内の「ホーム画面に追加する」でも追加できます' \
             > dist/はじめにお読みください.txt
           (cd dist && zip -9 StationWakeUp-Official.zip StationWakeUp-Official.apk はじめにお読みください.txt)
           cp dist/StationWakeUp-Official.zip downloads/StationWakeUp-Official.zip

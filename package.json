@@ -5,6 +5,8 @@
     "copy": "node scripts/copy-public.cjs",
     "build": "node scripts/copy-public.cjs",
     "test": "node scripts/test-speech-match.cjs",
+    "icons": "python3 scripts/generate-launcher-icons.py",
+    "verify:apk": "bash scripts/verify-launcher-apk.sh",
     "sync": "npm run copy && npx cap sync && node scripts/strip-apk-from-cap.js",
     "android:sync": "npm run copy && npx cap sync android && node scripts/strip-apk-from-cap.js",
     "android:open": "npx cap open android",

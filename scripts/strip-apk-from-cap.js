@@ -1,21 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 
-/** Capacitor 同梱から配布用 APK を除外（アプリ肥大化防止） */
-function stripHostedApkFromCapacitorAssets(platformPublicDir) {
+/** Capacitor 同梱から配布用 downloads（APK/ZIP）を除外（アプリ肥大化・混乱防止） */
+function stripHostedPackagesFromCapacitorAssets(platformPublicDir) {
   const dir = path.join(platformPublicDir, 'downloads');
   if (!fs.existsSync(dir)) return;
-  for (const name of fs.readdirSync(dir)) {
-    if (name.endsWith('.apk')) {
-      fs.unlinkSync(path.join(dir, name));
-      console.log('Removed hosted APK from Capacitor assets:', path.join(dir, name));
-    }
-  }
-  try {
-    if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
-  } catch (e) { /* ignore */ }
+  fs.rmSync(dir, { recursive: true, force: true });
+  console.log('Removed hosted downloads from Capacitor assets:', dir);
 }
 
 const root = path.join(__dirname, '..');
-stripHostedApkFromCapacitorAssets(path.join(root, 'android/app/src/main/assets/public'));
-stripHostedApkFromCapacitorAssets(path.join(root, 'ios/App/App/public'));
+stripHostedPackagesFromCapacitorAssets(path.join(root, 'android/app/src/main/assets/public'));
+stripHostedPackagesFromCapacitorAssets(path.join(root, 'ios/App/App/public'));
