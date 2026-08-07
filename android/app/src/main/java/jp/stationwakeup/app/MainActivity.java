@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // カスタムプラグインは super.onCreate より前に登録する（Capacitor 要件）
         registerPlugin(AlarmVibratorPlugin.class);
+        registerPlugin(StationSpeechPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

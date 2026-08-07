@@ -158,8 +158,8 @@
         <footer class="text-slate-500 text-xs pb-10 leading-relaxed space-y-3">
             <p class="text-center text-slate-400 text-[13px] font-medium">使い方のポイント</p>
             <ul class="list-disc pl-5 space-y-1.5 text-slate-400 max-w-md mx-auto">
-                <li><strong class="text-slate-300">公式アプリ版</strong>をインストールすると、本体バイブが確実に使え、次回からいつも同じアプリで開けます。</li>
-                <li>Android は上の「公式 APK をインストール」→ ホーム画面のアイコンから起動してください。</li>
+                <li><strong class="text-slate-300">公式アプリ版</strong>をインストールすると、本体バイブと駅名の聞き取り（ネイティブ音声認識）が使えます。</li>
+                <li>Android は上の「公式 APK をインストール」→ ホーム画面のアイコンから起動。初回は<strong class="text-slate-300">マイク許可</strong>を「許可」にしてください。</li>
                 <li>ブラウザの「ホーム画面に追加」は便利ですが、<strong class="text-slate-300">公式アプリではありません</strong>（iPhone では特にバイブ制限あり）。</li>
                 <li>検知すると <strong class="text-slate-300">画面点滅・音・バイブ</strong>で知らせます。音量を上げてバイブ ON にすると起きやすいです。</li>
             </ul>
@@ -1026,12 +1026,193 @@
         let alarmShowing = false;
         /** アラーム1回の間に一度だけ：タップで確実に navigator.vibrate を通す */
         let alarmGestureVibrateDone = false;
+        /** 公式アプリ: ネイティブ音声認識のリスナー登録済みか */
+        let nativeSpeechListenersReady = false;
+        let nativeSpeechRestartTimer = null;
+        let usingNativeSpeech = false;
+
+        function getStationSpeechPlugin() {
+            return getCapacitorPlugin('StationSpeech');
+        }
+
+        function getCommunitySpeechPlugin() {
+            // @capacitor-community/speech-recognition
+            return getCapacitorPlugin('SpeechRecognition');
+        }
+
+        /** 公式アプリで使う音声認識バックエンドを返す */
+        function getNativeSpeechBackend() {
+            if (!isCapacitorNative()) return null;
+            const station = getStationSpeechPlugin();
+            if (station && typeof station.start === 'function') {
+                return { kind: 'station', plugin: station };
+            }
+            const community = getCommunitySpeechPlugin();
+            if (community && typeof community.start === 'function') {
+                return { kind: 'community', plugin: community };
+            }
+            return null;
+        }
 
         function clearSpeechTimers() {
             clearTimeout(restartTimer);
             clearTimeout(retryStartTimer);
             restartTimer = null;
             retryStartTimer = null;
+            if (nativeSpeechRestartTimer) {
+                clearTimeout(nativeSpeechRestartTimer);
+                nativeSpeechRestartTimer = null;
+            }
+        }
+
+        function handleRecognizedText(text, isFinal) {
+            if (!text || !String(text).trim()) return;
+            const line = String(text).trim();
+            updateLog(line, !!isFinal);
+            checkMatch(line);
+        }
+
+        function handleRecognizedMatches(matches, isFinal) {
+            if (!matches || !matches.length) return;
+            for (let i = 0; i < matches.length; i++) {
+                handleRecognizedText(matches[i], isFinal);
+            }
+            // 結合文字列でも判定（「次は品川」など）
+            handleRecognizedText(matches.join(' '), isFinal);
+        }
+
+        async function ensureNativeSpeechListeners(backend) {
+            if (nativeSpeechListenersReady || !backend || !backend.plugin) return;
+            const P = backend.plugin;
+            const onPartial = (data) => {
+                if (!isListening) return;
+                handleRecognizedMatches(data && data.matches, false);
+            };
+            const onFinal = (data) => {
+                if (!isListening) return;
+                handleRecognizedMatches(data && data.matches, true);
+            };
+            const onState = (data) => {
+                if (!isListening) return;
+                if (data && data.status === 'started') {
+                    hadRecognitionOnStart = true;
+                    systemMsg.textContent = '聞き取り中（公式アプリ）';
+                    systemMsg.className = 'text-blue-400 font-sans';
+                } else if (data && data.status === 'stopped') {
+                    // StationSpeech は自動再開。community は JS 側で再開する
+                    if (backend.kind === 'community' && isListening) {
+                        systemMsg.textContent = '再接続中…';
+                        systemMsg.className = 'text-yellow-500 font-sans';
+                        scheduleCommunitySpeechRestart(backend);
+                    }
+                }
+            };
+            const onError = (data) => {
+                if (!isListening) return;
+                const msg = (data && data.message) ? String(data.message) : '音声認識エラー';
+                const code = data && data.code;
+                // 無音・一致なしは通常動作（再開される）
+                if (code === 6 || code === 7 || /一致なし|音声入力がありません|No match|No speech/i.test(msg)) {
+                    systemMsg.textContent = '聞き取り中（待機）';
+                    systemMsg.className = 'text-blue-400 font-sans';
+                    return;
+                }
+                if (/権限|permission|マイク/i.test(msg)) {
+                    systemMsg.textContent = 'マイクが許可されていません。アプリ設定でマイクを許可してください。';
+                    systemMsg.className = 'text-red-500 font-sans';
+                    return;
+                }
+                systemMsg.textContent = msg;
+                systemMsg.className = 'text-yellow-500 font-sans';
+            };
+
+            if (typeof P.addListener === 'function') {
+                try { await P.addListener('partialResults', onPartial); } catch (e) { /* ignore */ }
+                try { await P.addListener('results', onFinal); } catch (e) { /* ignore */ }
+                try { await P.addListener('listeningState', onState); } catch (e) { /* ignore */ }
+                try { await P.addListener('error', onError); } catch (e) { /* ignore */ }
+            }
+            nativeSpeechListenersReady = true;
+        }
+
+        function scheduleCommunitySpeechRestart(backend) {
+            if (nativeSpeechRestartTimer) clearTimeout(nativeSpeechRestartTimer);
+            nativeSpeechRestartTimer = setTimeout(() => {
+                if (!isListening || !backend) return;
+                void startNativeSpeechSession(backend, false);
+            }, 500);
+        }
+
+        async function startNativeSpeechSession(backend, fromUserClick) {
+            if (!backend || !backend.plugin) return false;
+            const P = backend.plugin;
+            try {
+                if (typeof P.requestPermissions === 'function') {
+                    const perm = await P.requestPermissions();
+                    const mic = perm && (perm.microphone || perm.speechRecognition);
+                    if (mic && mic !== 'granted') {
+                        systemMsg.textContent = 'マイク権限が必要です。設定から許可してください。';
+                        systemMsg.className = 'text-red-500 font-sans';
+                        if (fromUserClick) {
+                            isListening = false;
+                            statusText.textContent = '監視を開始する';
+                            toggleBtn.classList.remove('pulse');
+                            toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
+                        }
+                        return false;
+                    }
+                }
+                if (typeof P.available === 'function') {
+                    const av = await P.available();
+                    if (av && av.available === false) {
+                        systemMsg.textContent = 'この端末では音声認識を利用できません（Google音声サービス等を確認）。';
+                        systemMsg.className = 'text-red-500 font-sans';
+                        return false;
+                    }
+                }
+                await ensureNativeSpeechListeners(backend);
+                if (backend.kind === 'station') {
+                    await P.start({ language: 'ja-JP', maxResults: 5, restartDelayMs: 450 });
+                } else {
+                    // community: popup false + partialResults。セッション終了ごとに再開
+                    try { await P.stop(); } catch (e) { /* ignore */ }
+                    await P.start({
+                        language: 'ja-JP',
+                        maxResults: 5,
+                        partialResults: true,
+                        popup: false,
+                    });
+                }
+                usingNativeSpeech = true;
+                hadRecognitionOnStart = true;
+                systemMsg.textContent = '聞き取り中（公式アプリ）';
+                systemMsg.className = 'text-blue-400 font-sans';
+                return true;
+            } catch (e) {
+                console.warn('native speech start failed', e);
+                systemMsg.textContent = '音声認識を開始できませんでした: ' + (e && e.message ? e.message : e);
+                systemMsg.className = 'text-red-500 font-sans';
+                if (fromUserClick) {
+                    isListening = false;
+                    statusText.textContent = '監視を開始する';
+                    toggleBtn.classList.remove('pulse');
+                    toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
+                } else if (backend.kind === 'community' && isListening) {
+                    scheduleCommunitySpeechRestart(backend);
+                }
+                return false;
+            }
+        }
+
+        async function stopNativeSpeechSession() {
+            const backend = getNativeSpeechBackend();
+            if (!backend || !backend.plugin) return;
+            try {
+                if (typeof backend.plugin.stop === 'function') {
+                    await backend.plugin.stop();
+                }
+            } catch (e) { /* ignore */ }
+            usingNativeSpeech = false;
         }
 
         function attachRecognition(rec) {
@@ -1160,37 +1341,57 @@
 
         const setupHelpDetails = document.getElementById('setupHelpDetails');
 
-        if (SpeechRecognitionCtor) {
-            recognition = createRecognition();
+        (function initSpeechStatus() {
+            const backend = getNativeSpeechBackend();
+            if (backend) {
+                systemMsg.textContent = '準備OK（公式アプリ音声認識）';
+                systemMsg.className = 'text-green-500 font-sans';
+                if (setupHelpDetails) setupHelpDetails.open = false;
+                return;
+            }
+            if (SpeechRecognitionCtor) {
+                recognition = createRecognition();
 
-            if (!window.isSecureContext) {
-                systemMsg.textContent = "要対応: URL を localhost / HTTPS に";
-                systemMsg.className = "text-amber-500 font-sans";
-                if (setupHelpDetails) setupHelpDetails.open = true;
-            } else {
-                let insecureHttpLan = false;
-                try {
-                    const { protocol, hostname } = window.location;
-                    const h = (hostname || '').toLowerCase();
-                    if (protocol === 'http:' && h !== 'localhost' && h !== '127.0.0.1' && !h.endsWith('.localhost')) {
-                        insecureHttpLan = true;
-                    }
-                } catch (e) { /* ignore */ }
-                if (insecureHttpLan) {
-                    systemMsg.textContent = "要確認: この URL では振動等が無効な場合あり";
+                if (!window.isSecureContext) {
+                    systemMsg.textContent = "要対応: URL を localhost / HTTPS に";
                     systemMsg.className = "text-amber-500 font-sans";
                     if (setupHelpDetails) setupHelpDetails.open = true;
                 } else {
-                    systemMsg.textContent = "準備OK";
-                    systemMsg.className = "text-green-500 font-sans";
-                    if (setupHelpDetails) setupHelpDetails.open = false;
+                    let insecureHttpLan = false;
+                    try {
+                        const { protocol, hostname } = window.location;
+                        const h = (hostname || '').toLowerCase();
+                        if (protocol === 'http:' && h !== 'localhost' && h !== '127.0.0.1' && !h.endsWith('.localhost')) {
+                            insecureHttpLan = true;
+                        }
+                    } catch (e) { /* ignore */ }
+                    if (insecureHttpLan) {
+                        systemMsg.textContent = "要確認: この URL では振動等が無効な場合あり";
+                        systemMsg.className = "text-amber-500 font-sans";
+                        if (setupHelpDetails) setupHelpDetails.open = true;
+                    } else {
+                        systemMsg.textContent = "準備OK";
+                        systemMsg.className = "text-green-500 font-sans";
+                        if (setupHelpDetails) setupHelpDetails.open = false;
+                    }
                 }
+            } else {
+                systemMsg.textContent = isCapacitorNative()
+                    ? "公式アプリの音声認識を初期化中…（再起動してください）"
+                    : "音声認識に非対応のブラウザです。公式アプリ版を使ってください。";
+                systemMsg.className = "text-red-500 font-sans";
+                if (setupHelpDetails) setupHelpDetails.open = true;
             }
-        } else {
-            systemMsg.textContent = "音声認識に非対応のブラウザです";
-            systemMsg.className = "text-red-500 font-sans";
-            if (setupHelpDetails) setupHelpDetails.open = true;
-        }
+        })();
+
+        // Capacitor bridge 遅延読み込み対策
+        setTimeout(() => {
+            if (isCapacitorNative() && getNativeSpeechBackend()) {
+                systemMsg.textContent = '準備OK（公式アプリ音声認識）';
+                systemMsg.className = 'text-green-500 font-sans';
+            }
+            updateOfficialAppUI();
+        }, 800);
 
         function updateLog(text, isFinal) {
             const firstChild = transcriptLog.firstChild;
@@ -1369,7 +1570,11 @@
         }
 
         function startListening() {
-            if (!SpeechRecognitionCtor) return;
+            const backend = getNativeSpeechBackend();
+            if (!backend && !SpeechRecognitionCtor) {
+                alert('この環境では音声認識を利用できません。公式アプリ版をインストールしてください。');
+                return;
+            }
             const station = targetInput.value.trim();
             if (!station) {
                 alert('先に駅名を入力してください。');
@@ -1389,13 +1594,19 @@
                 lastInstanceCreatedAt = Date.now();
                 isListening = true;
                 transcriptLog.innerHTML = '';
-                recognition = createRecognition();
 
                 statusText.textContent = '監視中...';
                 toggleBtn.classList.replace('bg-blue-600', 'bg-red-600');
                 toggleBtn.classList.add('pulse');
 
-                tryStartRecognition(0, { fromUserClick: true });
+                if (backend) {
+                    systemMsg.textContent = 'マイク準備中…';
+                    systemMsg.className = 'text-yellow-500 font-sans';
+                    void startNativeSpeechSession(backend, true);
+                } else {
+                    recognition = createRecognition();
+                    tryStartRecognition(0, { fromUserClick: true });
+                }
             };
 
             if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
@@ -1409,6 +1620,7 @@
             alarmShowing = false;
             isListening = false;
             clearSpeechTimers();
+            void stopNativeSpeechSession();
             if (recognition) {
                 try { recognition.stop(); } catch (e) {}
             }
