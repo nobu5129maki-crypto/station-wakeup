@@ -4,6 +4,9 @@ Station WakeUp — Android で「本体のバイブ」を確実に使う手順
 Chrome / ホーム画面の Web アプリのままでは、機種・OS の制限で Web の振動が無効になることがあります。
 このフォルダの「Android プロジェクト」から APK をビルドすると、端末のバイブレータ（ネイティブ API）を使えます。
 
+APK ではカスタムプラグイン AlarmVibrator が、Android の Vibrator API を
+USAGE_ALARM 属性付きで直接呼び出します（止めるまでパターン振動を繰り返します）。
+
 前提: PC に Node.js（LTS）と Android Studio を入れていること。
 
 ■ 初回だけ
@@ -14,11 +17,21 @@ Chrome / ホーム画面の Web アプリのままでは、機種・OS の制限
 
 Android Studio で「Run」して端末にインストール。
 
-■ HTML / JS を直したあと
+■ HTML / JS / ネイティブコードを直したあと
 
    npm run android:sync
+
+（AlarmVibratorPlugin.java など Java を変えた場合は、Android Studio で再ビルドも必要です）
+
+■ 動作確認
+
+1. アプリを開く
+2. 「本体バイブを試す」をタップ → 本体が短く振動すれば OK
+3. 監視開始 → 駅名検知でアラーム中は止めるまで本体バイブが続く
 
 ■ メモ
 
 - アプリの AndroidManifest に VIBRATE / RECORD_AUDIO を記載済みです。
-- ビルド対象のファイルは scripts/copy-public.cjs が public/ にコピーしたものです（ルートの index.html を編集したら必ず android:sync）。
+- ビルド対象の Web ファイルは scripts/copy-public.cjs が public/ にコピーしたものです
+  （ルートの index.html を編集したら必ず android:sync）。
+- Web 版の表示・音・点滅はそのまま。本体バイブの確実動作は APK 向けです。

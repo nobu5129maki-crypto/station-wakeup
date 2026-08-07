@@ -98,9 +98,9 @@
                 <span id="statusIcon">🎤</span>
                 <span id="statusText">監視を開始する</span>
             </button>
-            <p id="hapticTestHint" class="hidden text-center text-[11px] text-slate-500 mt-3 leading-snug">公式アプリ版をお使いのとき、下のボタンで本体の振動を試せます。</p>
+            <p id="hapticTestHint" class="hidden text-center text-[11px] text-slate-500 mt-3 leading-snug">Android アプリ版では、下のボタンで本体バイブレータを試せます。</p>
             <button type="button" id="hapticTestBtn" class="hidden w-full mt-2 py-2 rounded-lg border border-slate-600 text-slate-300 text-sm hover:bg-slate-700/80 transition-colors">
-                振動を試す（1回だけ）
+                本体バイブを試す
             </button>
         </div>
 
@@ -119,7 +119,7 @@
                 <div class="text-6xl mb-4">🔔</div>
                 <h2 class="text-2xl font-bold text-red-500 mb-2">駅に到着します！</h2>
                 <p id="matchText" class="text-xl mb-4 font-semibold"></p>
-                <p class="text-xs text-slate-400 mb-6 leading-snug">大きな表示・画面全体の赤い点滅・アラーム音で知らせます。止めるまで繰り返し鳴ります。</p>
+                <p class="text-xs text-slate-400 mb-6 leading-snug">大きな表示・画面全体の赤い点滅・アラーム音・本体バイブで知らせます。止めるまで繰り返します。</p>
                 <button id="stopAlarmBtn" class="w-full bg-red-600 py-4 rounded-xl font-bold text-xl hover:bg-red-500 active:scale-95 transition-transform">
                     アラームを止める
                 </button>
@@ -131,6 +131,7 @@
             <ul class="list-disc pl-5 space-y-1.5 text-slate-400 max-w-md mx-auto">
                 <li>まず <strong class="text-slate-300">マナーモードをオフ</strong>、端末とブラウザの <strong class="text-slate-300">音量・通知をオン</strong>にしてください。</li>
                 <li>検知すると <strong class="text-slate-300">大きな表示・赤い背景の点滅・アラーム音</strong>で知らせます。</li>
+                <li><strong class="text-slate-300">Android 公式アプリ（APK）</strong>では、端末の本体バイブレータを使って確実に振動します（画面の「本体バイブを試す」で確認可）。</li>
             </ul>
             <p class="text-center text-[11px] text-slate-600">開き方の注意: <code class="font-mono text-slate-500">https</code> または <code class="font-mono text-slate-500">localhost</code>。スマホだけで PC の LAN アドレス（例: 192.168…）だとマイクが使えないことがあります。</p>
         </footer>
@@ -249,10 +250,14 @@
         const hapticTestBtn = document.getElementById('hapticTestBtn');
         const hapticTestHint = document.getElementById('hapticTestHint');
 
+        function isCapacitorNative() {
+            const c = window.Capacitor;
+            return !!(c && typeof c.isNativePlatform === 'function' && c.isNativePlatform());
+        }
+
         function updateNativeHapticTestUI() {
             if (!hapticTestBtn || !hapticTestHint) return;
-            const c = window.Capacitor;
-            const isCap = !!(c && typeof c.isNativePlatform === 'function' && c.isNativePlatform());
+            const isCap = isCapacitorNative();
             hapticTestBtn.classList.toggle('hidden', !isCap);
             hapticTestHint.classList.toggle('hidden', !isCap);
         }
@@ -270,8 +275,10 @@
         let alarmAudioCtx = null;
         /** アラーム中は画面スリープを防ぎ、通知＆振動の取りこぼしを減らす */
         let alarmWakeLock = null;
-        /** Capacitor ネイティブの繰り返しバイブ（Web だけでは振動しない端末向け） */
+        /** Capacitor Haptics のフォールバック繰り返し（AlarmVibrator 未使用時） */
         let nativeHapticsInterval = null;
+        /** AlarmVibrator.start() が成功してネイティブ側でループ振動中か */
+        let nativeAlarmVibrateActive = false;
 
         const ALARM_NOTIFY_TAG = 'station-wakeup-alarm';
 
@@ -435,29 +442,78 @@
             alarmWakeLock = null;
         }
 
-        function getCapacitorHapticsPlugin() {
+        function getCapacitorPlugin(name) {
             const c = window.Capacitor;
             if (!c) return null;
             if (c.Plugins) {
-                if (c.Plugins.Haptics) return c.Plugins.Haptics;
+                if (c.Plugins[name]) return c.Plugins[name];
                 const keys = Object.keys(c.Plugins);
-                for ( let i = 0; i < keys.length; i++) {
-                    if (keys[i].toLowerCase() === 'haptics') return c.Plugins[keys[i]];
+                const lower = name.toLowerCase();
+                for (let i = 0; i < keys.length; i++) {
+                    if (keys[i].toLowerCase() === lower) return c.Plugins[keys[i]];
                 }
             }
             if (typeof c.getPlugin === 'function') {
                 try {
-                    return c.getPlugin('Haptics');
+                    return c.getPlugin(name);
                 } catch (e) { /* ignore */ }
             }
             return null;
         }
 
-        /** Capacitor Android APK の Vibrator。Web の振動が無効な端末への本対策。 */
+        function getCapacitorHapticsPlugin() {
+            return getCapacitorPlugin('Haptics');
+        }
+
+        function getAlarmVibratorPlugin() {
+            return getCapacitorPlugin('AlarmVibrator');
+        }
+
+        /**
+         * APK 専用: Android Vibrator + USAGE_ALARM で本体バイブをループ開始。
+         * 成功したら true（JS 側の setInterval は不要）。
+         */
+        async function startNativeAlarmVibrate() {
+            if (!isCapacitorNative()) return false;
+            const P = getAlarmVibratorPlugin();
+            if (!P || typeof P.start !== 'function') return false;
+            try {
+                await P.start();
+                nativeAlarmVibrateActive = true;
+                return true;
+            } catch (e) {
+                nativeAlarmVibrateActive = false;
+                return false;
+            }
+        }
+
+        async function stopNativeAlarmVibrate() {
+            nativeAlarmVibrateActive = false;
+            if (!isCapacitorNative()) return;
+            const P = getAlarmVibratorPlugin();
+            if (P && typeof P.stop === 'function') {
+                try { await P.stop(); } catch (e) { /* ignore */ }
+            }
+        }
+
+        /** テスト用の短い本体バイブ（AlarmVibrator → Haptics の順） */
+        async function pulseNativeDeviceVibrate(durationMs) {
+            if (!isCapacitorNative()) return;
+            const ms = typeof durationMs === 'number' ? durationMs : 500;
+            const P = getAlarmVibratorPlugin();
+            if (P && typeof P.pulse === 'function') {
+                try {
+                    await P.pulse({ duration: ms });
+                    return;
+                } catch (e) { /* fall through */ }
+            }
+            await pulseCapacitorHaptics();
+        }
+
+        /** Capacitor Haptics フォールバック（AlarmVibrator が無い場合） */
         async function pulseCapacitorHaptics() {
             try {
-                const c = window.Capacitor;
-                if (!c || typeof c.isNativePlatform !== 'function' || !c.isNativePlatform()) return;
+                if (!isCapacitorNative()) return;
                 const H = getCapacitorHapticsPlugin();
                 if (!H) return;
                 const v = async (ms) => {
@@ -768,7 +824,7 @@
                     navigator.vibrate([400, 100, 400, 100, 400]);
                 } catch (e) { /* ignore */ }
             }
-            void pulseCapacitorHaptics();
+            void pulseNativeDeviceVibrate(500);
             isListening = false;
             clearSpeechTimers();
             if (recognition) {
@@ -782,7 +838,7 @@
             }
             alarmBox.classList.add('vibrate-active');
 
-            // バイブレーション開始
+            // バイブレーション開始（APK では本体バイブ優先）
             startVibration();
             
             // 視覚的なフィードバック
@@ -791,7 +847,7 @@
             toggleBtn.classList.remove('pulse');
         }
 
-        function startVibration() {
+        async function startVibration() {
             if (vibrationInterval) {
                 clearInterval(vibrationInterval);
                 vibrationInterval = null;
@@ -811,10 +867,18 @@
             if (typeof navigator.vibrate === 'function') {
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
             }
+            await stopNativeAlarmVibrate();
             closeAlarmNotificationsAndPageInstance();
             void acquireAlarmWakeLock();
 
             const androidUa = isAndroidUserAgent();
+            const onNativeApk = isCapacitorNative();
+
+            // APK: Android Vibrator（USAGE_ALARM）でループ振動を開始
+            let nativeLoopOk = false;
+            if (onNativeApk) {
+                nativeLoopOk = await startNativeAlarmVibrate();
+            }
 
             if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
                 void showAlarmHapticNotification();
@@ -823,7 +887,8 @@
                 }, 2600);
             }
 
-            if (typeof navigator.vibrate === 'function') {
+            // Web / ネイティブループ失敗時のみ navigator.vibrate を繰り返し
+            if (!nativeLoopOk && typeof navigator.vibrate === 'function') {
                 [0, 40, 90, 160].forEach((ms) => {
                     setTimeout(() => pulseHardwareVibrate(), ms);
                 });
@@ -845,7 +910,8 @@
                 alarmBuzzInterval = setInterval(() => playAlarmBuzzTone(), 2000);
             }
 
-            if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) {
+            // AlarmVibrator が使えない APK 向け: Haptics プラグインでフォールバック
+            if (onNativeApk && !nativeLoopOk) {
                 void pulseCapacitorHaptics();
                 nativeHapticsInterval = setInterval(() => {
                     void pulseCapacitorHaptics();
@@ -870,6 +936,7 @@
                 clearInterval(nativeHapticsInterval);
                 nativeHapticsInterval = null;
             }
+            void stopNativeAlarmVibrate();
             if (typeof navigator.vibrate === 'function') {
                 try { navigator.vibrate(0); } catch (e) { /* ignore */ }
             }
@@ -946,19 +1013,22 @@
         alarmPanel.addEventListener('pointerdown', () => {
             if (!alarmShowing || alarmGestureVibrateDone) return;
             alarmGestureVibrateDone = true;
-            void pulseCapacitorHaptics();
-            if (typeof navigator.vibrate === 'function') {
-                try {
-                    navigator.vibrate(0);
-                    navigator.vibrate([450, 120, 450, 120, 450, 120, 700]);
-                } catch (e) { /* ignore */ }
+            // ネイティブループ中は追加パルス不要。Web 時のみジェスチャー経由で vibrate を通す
+            if (!nativeAlarmVibrateActive) {
+                void pulseNativeDeviceVibrate(700);
+                if (typeof navigator.vibrate === 'function') {
+                    try {
+                        navigator.vibrate(0);
+                        navigator.vibrate([450, 120, 450, 120, 450, 120, 700]);
+                    } catch (e) { /* ignore */ }
+                }
             }
         }, true);
 
         if (hapticTestBtn) {
             hapticTestBtn.addEventListener('click', () => {
                 primeAlarmAudioFromUserGesture();
-                void pulseCapacitorHaptics();
+                void pulseNativeDeviceVibrate(600);
             });
         }
 
