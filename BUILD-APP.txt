@@ -6,14 +6,16 @@ Station WakeUp — Android / iPhone で「本体バイブ」を使う手順
 
 ■ いちばん簡単な方法（Android）
 
-1. サイト上部の「公式 APK をインストール」をタップ
+1. スマホで次を開く（GitHub経由より確実）:
+   https://station-wakeup.vercel.app/download.html
    または
-   https://github.com/nobu5129maki-crypto/station-wakeup/releases/tag/android-latest
-2. ダウンロードした station-wakeup.apk を開いてインストール
-3. 以後はホーム画面の「Station WakeUp」アイコンから起動
-   （ブラウザやホーム画面追加ではなく、公式アプリを使ってください）
+   https://station-wakeup.vercel.app/downloads/station-wakeup.apk
+2. ダウンロード完了後、通知または「ダウンロード」フォルダから APK を開く
+3. 「不明なアプリ」の許可が必要な場合あり
+4. 以後はホーム画面の「Station WakeUp」アイコンから起動
 
-main に push すると GitHub Actions が最新 APK を android-latest リリースに更新します。
+※ GitHub Releases のリンクはスマホで「ダウンロードしています…」のまま
+  止まることがあるため、上記のサイト直リンクを使ってください。
 
 ■ 共通（開発者向け）
 
@@ -35,9 +37,10 @@ main に push すると GitHub Actions が最新 APK を android-latest リリ�
 1. バナーが「✓ 公式アプリ版で動作中」になること
 2. 「② バイブレーション」が ON
 3. 「バイブを試す」で振動すること
+4. 監視開始で「聞き取り中（公式アプリ）」になること（マイク許可が必要）
 
 ■ メモ
 
 - ブラウザの「ホーム画面に追加」は公式アプリではありません
-- インストール後にサイトを開くと「公式アプリで開く」が出ます（Android）
+- 公式 APK は downloads/station-wakeup.apk としてサイトに同梱されます
 - ルートの index.html を直したら必ず npm run sync

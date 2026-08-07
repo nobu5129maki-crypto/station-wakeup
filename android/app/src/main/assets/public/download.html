@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Station WakeUp 公式APKダウンロード</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
+    main { max-width: 28rem; margin: 40px auto; }
+    h1 { color: #60a5fa; font-size: 1.4rem; }
+    p { color: #94a3b8; line-height: 1.6; font-size: 0.95rem; }
+    a.btn {
+      display: block; text-align: center; margin-top: 20px; padding: 16px;
+      background: #2563eb; color: #fff; text-decoration: none; border-radius: 12px; font-weight: 700;
+    }
+    a.btn:active { transform: scale(0.98); }
+    .note { margin-top: 16px; font-size: 0.8rem; color: #64748b; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Station WakeUp 公式APK</h1>
+    <p>下のボタンをタップしてダウンロードしてください。終わったら通知または「ダウンロード」フォルダから APK を開いてインストールします。</p>
+    <a class="btn" id="apkLink" href="./downloads/station-wakeup.apk" download="station-wakeup.apk">公式APKをダウンロード</a>
+    <p class="note">進まない場合は、リンクを長押し →「リンクをダウンロード」を選んでください。</p>
+    <p class="note"><a href="./index.html" style="color:#93c5fd">アプリの説明ページに戻る</a></p>
+  </main>
+  <script>
+    // Android Chrome では同一オリジンの直接遷移が最も確実
+    document.getElementById('apkLink').addEventListener('click', function (e) {
+      // download 属性付きの通常遷移を優先（JS で邪魔しない）
+    });
+  </script>
+</body>
+</html>

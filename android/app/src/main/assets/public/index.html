@@ -159,7 +159,7 @@
             <p class="text-center text-slate-400 text-[13px] font-medium">使い方のポイント</p>
             <ul class="list-disc pl-5 space-y-1.5 text-slate-400 max-w-md mx-auto">
                 <li><strong class="text-slate-300">公式アプリ版</strong>をインストールすると、本体バイブと駅名の聞き取り（ネイティブ音声認識）が使えます。</li>
-                <li>Android は上の「公式 APK をインストール」→ ホーム画面のアイコンから起動。初回は<strong class="text-slate-300">マイク許可</strong>を「許可」にしてください。</li>
+                <li>Android は「APK直リンク」または <a class="text-blue-300 underline" href="./download.html">ダウンロード専用ページ</a> から取得 → ホーム画面のアイコンから起動。初回は<strong class="text-slate-300">マイク許可</strong>を「許可」にしてください。</li>
                 <li>ブラウザの「ホーム画面に追加」は便利ですが、<strong class="text-slate-300">公式アプリではありません</strong>（iPhone では特にバイブ制限あり）。</li>
                 <li>検知すると <strong class="text-slate-300">画面点滅・音・バイブ</strong>で知らせます。音量を上げてバイブ ON にすると起きやすいです。</li>
             </ul>
@@ -181,10 +181,27 @@
         const VIBRATE_ENABLED_KEY = 'stationWakeUp_vibrateEnabled';
         const OFFICIAL_APP_PREF_KEY = 'stationWakeUp_preferOfficialApp';
         const OFFICIAL_APP_MARKED_KEY = 'stationWakeUp_markedOfficialInstalled';
-        const OFFICIAL_APK_URL = 'https://github.com/nobu5129maki-crypto/station-wakeup/releases/download/android-latest/station-wakeup.apk';
+        /** スマホで確実に落とすため、同サイト直配信を優先（GitHub Releases はリダイレクトで止まりやすい） */
+        const OFFICIAL_APK_FALLBACK_URL = 'https://github.com/nobu5129maki-crypto/station-wakeup/releases/download/android-latest/station-wakeup.apk';
         const OFFICIAL_RELEASE_URL = 'https://github.com/nobu5129maki-crypto/station-wakeup/releases/tag/android-latest';
         const OFFICIAL_APP_SCHEME = 'stationwakeup://open';
         const MAX_SAVED = 15;
+
+        function getOfficialApkUrl() {
+            try {
+                return new URL('./downloads/station-wakeup.apk', window.location.href).href;
+            } catch (e) {
+                return 'https://station-wakeup.vercel.app/downloads/station-wakeup.apk';
+            }
+        }
+
+        function getOfficialDownloadPageUrl() {
+            try {
+                return new URL('./download.html', window.location.href).href;
+            } catch (e) {
+                return 'https://station-wakeup.vercel.app/download.html';
+            }
+        }
 
         function getAlarmVolumePercent() {
             if (!alarmVolumeRange) return 90;
@@ -383,15 +400,29 @@
         function downloadOfficialApk() {
             markOfficialInstalled();
             setPreferOfficialApp(true);
-            const a = document.createElement('a');
-            a.href = OFFICIAL_APK_URL;
-            a.rel = 'noopener';
-            a.target = '_blank';
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
+            const url = getOfficialApkUrl();
+            showOfficialAppToast('公式APKをダウンロードしています。完了したら通知または「ダウンロード」フォルダから開いてインストールしてください。');
             updateOfficialAppUI();
-            showOfficialAppToast('APK のダウンロードを開始しました。インストール後はホーム画面の「Station WakeUp」から開いてください。');
+
+            // Android Chrome: target=_blank + GitHubリダイレクトは「ダウンロードしています…」で止まりやすい。
+            // 同一オリジンの APK へ通常遷移するのが最も確実。
+            try {
+                const a = document.createElement('a');
+                a.href = url;
+                a.setAttribute('download', 'station-wakeup.apk');
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } catch (e) { /* ignore */ }
+
+            // フォールバック: 少し待っても遷移しない端末向けに download ページへ
+            setTimeout(() => {
+                try {
+                    // まだこのページにいる場合のみ案内を強化
+                    showOfficialAppToast('進まない場合は「ダウンロード専用ページ」またはリンク長押し→「リンクをダウンロード」を使ってください。');
+                } catch (e2) { /* ignore */ }
+            }, 2500);
         }
 
         function showOfficialAppToast(msg) {
@@ -471,7 +502,14 @@
                         ? 'w-full py-2.5 rounded-lg border border-blue-500/60 text-blue-100 text-sm font-bold hover:bg-blue-950/50 transition-colors'
                         : 'w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors'
                 ));
-                actions.appendChild(makeOfficialLinkButton('リリースページを開く', OFFICIAL_RELEASE_URL));
+                // 直接リンク（長押しダウンロード用）— JS click より確実な端末がある
+                const direct = makeOfficialLinkButton('APK直リンク（おすすめ）', getOfficialApkUrl());
+                direct.removeAttribute('target');
+                direct.setAttribute('download', 'station-wakeup.apk');
+                actions.appendChild(direct);
+                actions.appendChild(makeOfficialLinkButton('ダウンロード専用ページ', getOfficialDownloadPageUrl()));
+                const gh = makeOfficialLinkButton('予備: GitHubから取得', OFFICIAL_APK_FALLBACK_URL);
+                actions.appendChild(gh);
                 actions.appendChild(makeOfficialActionButton(
                     'インストール済みとして記憶する',
                     () => {
@@ -497,7 +535,7 @@
                     'w-full py-2.5 rounded-lg border border-slate-600 text-slate-200 text-sm font-medium hover:bg-slate-700/70 transition-colors'
                 ));
             } else {
-                actions.appendChild(makeOfficialLinkButton('Android 公式 APK', OFFICIAL_APK_URL));
+                actions.appendChild(makeOfficialLinkButton('Android 公式 APK（直リンク）', getOfficialApkUrl()));
                 actions.appendChild(makeOfficialLinkButton(
                     'ビルド手順',
                     'https://github.com/nobu5129maki-crypto/station-wakeup/blob/main/BUILD-APP.txt'
