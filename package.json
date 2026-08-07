@@ -4,13 +4,17 @@
   "scripts": {
     "copy": "node scripts/copy-public.cjs",
     "build": "node scripts/copy-public.cjs",
+    "sync": "npm run copy && npx cap sync",
     "android:sync": "npm run copy && npx cap sync android",
-    "android:open": "npx cap open android"
+    "android:open": "npx cap open android",
+    "ios:sync": "npm run copy && npx cap sync ios",
+    "ios:open": "npx cap open ios"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
     "@capacitor/core": "^7.0.0",
-    "@capacitor/haptics": "^7.0.0"
+    "@capacitor/haptics": "^7.0.0",
+    "@capacitor/ios": "^7.6.8"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.0.0"

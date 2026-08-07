@@ -1,0 +1,40 @@
+Station WakeUp — Android / iPhone で「本体バイブ」を使う手順
+============================================================
+
+ブラウザだけでは機種・OS の制限で振動が効かないことがあります。
+公式アプリ（Capacitor）なら本体バイブを使えます。
+
+■ 共通（初回）
+
+   npm install
+   npm run sync
+
+■ Android（APK）
+
+   npm run android:sync
+   npm run android:open
+
+Android Studio で Run → 端末にインストール。
+アラーム時は AlarmVibrator（USAGE_ALARM）で本体バイブがループします。
+
+■ iPhone（iOS アプリ）
+
+   Mac + Xcode が必要です。
+
+   npm run ios:sync
+   npm run ios:open
+
+Xcode で署名を設定して実機にインストール。
+アラーム時は Capacitor Haptics で本体バイブ（触覚）を繰り返します。
+
+■ 画面での確認
+
+1. 「② バイブレーション」が ON であること
+2. 「今の端末」に方式が表示されること
+3. 「バイブを試す」で振動すること
+
+■ メモ
+
+- Web 版の駅名検知・音・点滅はそのまま使えます
+- iPhone の Safari だけでは本体バイブ API が使えません（アプリ版を推奨）
+- ルートの index.html を直したら必ず npm run sync（または android:sync / ios:sync）

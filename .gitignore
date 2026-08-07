@@ -6,5 +6,10 @@ android/app/build/
 android/build/
 android/local.properties
 android/capacitor-cordova-android-plugins/build/
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
 .idea/
 *.iml

@@ -2,11 +2,13 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta http-equiv="Permissions-Policy" content="vibrate=*">
-    <!-- HTMLのhead部分をこのように修正してください -->
-<link rel="manifest" href="./manifest.json">
-<link rel="apple-touch-icon" href="./icon.svg">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="WakeUp">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./icon.svg">
     <title>駅到着アラーム - アナウンス検知</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -75,17 +77,41 @@
                 <p class="text-xs text-slate-500 mt-2">※「次は」「まもなく」などを入れると検知しやすくなります</p>
 
                 <div class="mt-5 pt-4 border-t border-slate-700">
-                    <label for="alarmVolumeRange" class="block text-sm font-medium text-amber-200/90 mb-2">アラーム音量（起こす強さ）</label>
+                    <label for="alarmVolumeRange" class="block text-sm font-medium text-amber-200/90 mb-2">① アラーム音量</label>
                     <div class="flex items-center gap-3">
                         <input type="range" id="alarmVolumeRange" min="0" max="100" value="90"
                             class="flex-1 h-2 rounded-full appearance-none bg-slate-600 accent-amber-500 cursor-pointer"
                             aria-valuemin="0" aria-valuemax="100">
                         <span id="alarmVolumeLabel" class="text-sm text-slate-200 w-11 text-right tabular-nums font-medium">90%</span>
                     </div>
-                    <p class="text-[11px] text-slate-500 mt-1.5 leading-snug">スマホの<span class="text-slate-400">メディア音量</span>も最大に近づけてください。0% ではほとんど聞こえません。</p>
+                    <p class="text-[11px] text-slate-500 mt-1.5 leading-snug">スマホの<span class="text-slate-400">メディア音量</span>も最大に近づけてください。</p>
                     <button type="button" id="alarmPreviewBtn" class="mt-2 text-sm text-amber-300/95 hover:text-amber-200 underline underline-offset-2 decoration-amber-500/50">
-                        今の設定で試聴する
+                        音だけ試す
                     </button>
+                </div>
+
+                <div class="mt-5 pt-4 border-t border-slate-700">
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <label class="block text-sm font-medium text-emerald-200/90" id="vibrateSectionLabel">② バイブレーション</label>
+                        <button type="button" id="vibrateToggleBtn" role="switch" aria-checked="true"
+                            class="shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold border transition-colors bg-emerald-600/90 border-emerald-400/50 text-white">
+                            <span id="vibrateToggleKnob" class="inline-block w-2 h-2 rounded-full bg-white"></span>
+                            <span id="vibrateToggleText">ON</span>
+                        </button>
+                    </div>
+                    <div id="vibrateStatusBox" class="rounded-lg bg-slate-900/70 border border-slate-600 px-3 py-2.5">
+                        <p class="text-xs text-slate-200 leading-snug">
+                            <span class="text-slate-500">今の端末:</span>
+                            <span id="vibrateModeLabel" class="font-medium text-emerald-300/95">確認中…</span>
+                        </p>
+                        <p id="vibrateHintText" class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">端末の振動対応を確認しています。</p>
+                        <p id="vibrateTestResult" class="hidden text-[11px] mt-1.5 leading-snug"></p>
+                    </div>
+                    <button type="button" id="hapticTestBtn"
+                        class="w-full mt-2.5 py-2.5 rounded-lg border border-emerald-700/70 bg-emerald-950/40 text-emerald-100 text-sm font-medium hover:bg-emerald-900/50 transition-colors">
+                        バイブを試す
+                    </button>
+                    <p id="hapticTestHint" class="text-center text-[11px] text-slate-500 mt-2 leading-snug">タップすると、使える方式で振動（または代替フィードバック）を試します。</p>
                 </div>
 
                 <div class="mt-3">
@@ -97,10 +123,6 @@
             <button id="toggleBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 text-lg shadow-lg">
                 <span id="statusIcon">🎤</span>
                 <span id="statusText">監視を開始する</span>
-            </button>
-            <p id="hapticTestHint" class="hidden text-center text-[11px] text-slate-500 mt-3 leading-snug">Android アプリ版では、下のボタンで本体バイブレータを試せます。</p>
-            <button type="button" id="hapticTestBtn" class="hidden w-full mt-2 py-2 rounded-lg border border-slate-600 text-slate-300 text-sm hover:bg-slate-700/80 transition-colors">
-                本体バイブを試す
             </button>
         </div>
 
@@ -119,7 +141,7 @@
                 <div class="text-6xl mb-4">🔔</div>
                 <h2 class="text-2xl font-bold text-red-500 mb-2">駅に到着します！</h2>
                 <p id="matchText" class="text-xl mb-4 font-semibold"></p>
-                <p class="text-xs text-slate-400 mb-6 leading-snug">大きな表示・画面全体の赤い点滅・アラーム音・本体バイブで知らせます。止めるまで繰り返します。</p>
+                <p class="text-xs text-slate-400 mb-6 leading-snug">画面点滅・アラーム音・バイブで知らせます。止めるまで繰り返します。</p>
                 <button id="stopAlarmBtn" class="w-full bg-red-600 py-4 rounded-xl font-bold text-xl hover:bg-red-500 active:scale-95 transition-transform">
                     アラームを止める
                 </button>
@@ -127,11 +149,12 @@
         </div>
 
         <footer class="text-slate-500 text-xs pb-10 leading-relaxed space-y-3">
-            <p class="text-center text-slate-400 text-[13px] font-medium">アラームの頼り方</p>
+            <p class="text-center text-slate-400 text-[13px] font-medium">使い方のポイント</p>
             <ul class="list-disc pl-5 space-y-1.5 text-slate-400 max-w-md mx-auto">
-                <li>まず <strong class="text-slate-300">マナーモードをオフ</strong>、端末とブラウザの <strong class="text-slate-300">音量・通知をオン</strong>にしてください。</li>
-                <li>検知すると <strong class="text-slate-300">大きな表示・赤い背景の点滅・アラーム音</strong>で知らせます。</li>
-                <li><strong class="text-slate-300">Android 公式アプリ（APK）</strong>では、端末の本体バイブレータを使って確実に振動します（画面の「本体バイブを試す」で確認可）。</li>
+                <li><strong class="text-slate-300">音量を上げる</strong>＋バイブ ON で起きやすくなります。</li>
+                <li>検知すると <strong class="text-slate-300">画面点滅・音・バイブ</strong>で知らせます。</li>
+                <li><strong class="text-slate-300">Android / iPhone の公式アプリ</strong>なら本体バイブを確実に使えます。「バイブを試す」で確認してください。</li>
+                <li>iPhone の Safari だけでは本体バイブ API が使えないため、確実な振動にはアプリ版を使ってください。</li>
             </ul>
             <p class="text-center text-[11px] text-slate-600">開き方の注意: <code class="font-mono text-slate-500">https</code> または <code class="font-mono text-slate-500">localhost</code>。スマホだけで PC の LAN アドレス（例: 192.168…）だとマイクが使えないことがあります。</p>
         </footer>
@@ -148,6 +171,7 @@
 
         const STORAGE_KEY = 'stationWakeUp_savedStations';
         const ALARM_VOLUME_KEY = 'stationWakeUp_alarmVolumePct';
+        const VIBRATE_ENABLED_KEY = 'stationWakeUp_vibrateEnabled';
         const MAX_SAVED = 15;
 
         function getAlarmVolumePercent() {
@@ -249,17 +273,156 @@
         const stopAlarmBtn = document.getElementById('stopAlarmBtn');
         const hapticTestBtn = document.getElementById('hapticTestBtn');
         const hapticTestHint = document.getElementById('hapticTestHint');
+        const vibrateToggleBtn = document.getElementById('vibrateToggleBtn');
+        const vibrateToggleText = document.getElementById('vibrateToggleText');
+        const vibrateModeLabel = document.getElementById('vibrateModeLabel');
+        const vibrateHintText = document.getElementById('vibrateHintText');
+        const vibrateTestResult = document.getElementById('vibrateTestResult');
 
         function isCapacitorNative() {
             const c = window.Capacitor;
             return !!(c && typeof c.isNativePlatform === 'function' && c.isNativePlatform());
         }
 
-        function updateNativeHapticTestUI() {
-            if (!hapticTestBtn || !hapticTestHint) return;
-            const isCap = isCapacitorNative();
-            hapticTestBtn.classList.toggle('hidden', !isCap);
-            hapticTestHint.classList.toggle('hidden', !isCap);
+        function getCapacitorPlatformName() {
+            const c = window.Capacitor;
+            if (!c || typeof c.getPlatform !== 'function') return '';
+            try { return String(c.getPlatform() || '').toLowerCase(); } catch (e) { return ''; }
+        }
+
+        /** android-native | ios-native | android-web | ios-web | other-web */
+        function getRuntimePlatform() {
+            if (isCapacitorNative()) {
+                const p = getCapacitorPlatformName();
+                if (p === 'ios') return 'ios-native';
+                if (p === 'android') return 'android-native';
+                return 'native';
+            }
+            const ua = navigator.userAgent || '';
+            if (/iPhone|iPad|iPod/i.test(ua)) return 'ios-web';
+            if (/Android/i.test(ua)) return 'android-web';
+            return 'other-web';
+        }
+
+        function isAndroidUserAgent() {
+            return /Android/i.test(navigator.userAgent || '');
+        }
+
+        function isIosLikePlatform() {
+            const p = getRuntimePlatform();
+            return p === 'ios-native' || p === 'ios-web';
+        }
+
+        function isVibrateEnabled() {
+            try {
+                const raw = localStorage.getItem(VIBRATE_ENABLED_KEY);
+                if (raw == null) return true;
+                return raw !== '0' && raw !== 'false';
+            } catch (e) {
+                return true;
+            }
+        }
+
+        function setVibrateEnabled(on) {
+            try { localStorage.setItem(VIBRATE_ENABLED_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+            syncVibrateToggleUI();
+            updateVibrateCapabilityUI();
+        }
+
+        function syncVibrateToggleUI() {
+            if (!vibrateToggleBtn || !vibrateToggleText) return;
+            const on = isVibrateEnabled();
+            vibrateToggleBtn.setAttribute('aria-checked', on ? 'true' : 'false');
+            vibrateToggleText.textContent = on ? 'ON' : 'OFF';
+            vibrateToggleBtn.className = on
+                ? 'shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold border transition-colors bg-emerald-600/90 border-emerald-400/50 text-white'
+                : 'shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold border transition-colors bg-slate-700 border-slate-500 text-slate-300';
+        }
+
+        /** 端末ごとのバイブ方式説明（UI用） */
+        function getVibrateCapabilityInfo() {
+            const plat = getRuntimePlatform();
+            if (plat === 'android-native') {
+                return {
+                    mode: 'android-body',
+                    label: 'Android 本体バイブ（確実）',
+                    hint: '公式アプリが端末のバイブレータを直接使います。アラーム中は止めるまで振動します。',
+                    reliable: true,
+                };
+            }
+            if (plat === 'ios-native') {
+                return {
+                    mode: 'ios-haptic',
+                    label: 'iPhone 本体バイブ（触覚）',
+                    hint: '公式アプリの触覚フィードバックで振動します。サイレントスイッチ時もバイブ ON なら振動します。',
+                    reliable: true,
+                };
+            }
+            if (plat === 'android-web' && typeof navigator.vibrate === 'function') {
+                return {
+                    mode: 'web-vibrate',
+                    label: 'ブラウザ振動（機種により弱い）',
+                    hint: 'Chrome 等のブラウザ振動を使います。効かない場合は Android 公式アプリ（APK）を使うと確実です。',
+                    reliable: false,
+                };
+            }
+            if (plat === 'ios-web') {
+                return {
+                    mode: 'ios-web-limited',
+                    label: 'iPhoneブラウザはバイブ制限あり',
+                    hint: 'Safari では本体バイブ API が使えません。確実な振動には iPhone 公式アプリを使ってください。ブラウザでは音と画面点滅で知らせます。',
+                    reliable: false,
+                };
+            }
+            if (typeof navigator.vibrate === 'function') {
+                return {
+                    mode: 'web-vibrate',
+                    label: 'ブラウザ振動',
+                    hint: 'この端末のブラウザ振動 API を使います。「バイブを試す」で確認できます。',
+                    reliable: false,
+                };
+            }
+            return {
+                mode: 'none',
+                label: 'バイブ非対応（音と画面で通知）',
+                hint: 'この環境では振動 API が使えません。アラーム音と画面点滅で知らせます。スマホ公式アプリなら本体バイブが使えます。',
+                reliable: false,
+            };
+        }
+
+        function updateVibrateCapabilityUI() {
+            const info = getVibrateCapabilityInfo();
+            if (vibrateModeLabel) {
+                vibrateModeLabel.textContent = isVibrateEnabled() ? info.label : 'OFF（振動しません）';
+                vibrateModeLabel.className = isVibrateEnabled()
+                    ? (info.reliable ? 'font-medium text-emerald-300/95' : 'font-medium text-amber-200/90')
+                    : 'font-medium text-slate-400';
+            }
+            if (vibrateHintText) {
+                vibrateHintText.textContent = isVibrateEnabled()
+                    ? info.hint
+                    : 'バイブ OFF です。ON にすると端末が対応する方式で振動します。';
+            }
+            if (hapticTestHint) {
+                if (!isVibrateEnabled()) {
+                    hapticTestHint.textContent = 'バイブが OFF のため、試し振動は行いません。';
+                } else if (info.mode === 'ios-web-limited') {
+                    hapticTestHint.textContent = 'iPhone のブラウザでは振動できないため、試し時は短い音で代用します。';
+                } else if (info.reliable) {
+                    hapticTestHint.textContent = '公式アプリの本体バイブを短い振動で確認できます。';
+                } else {
+                    hapticTestHint.textContent = '使える方式で振動（または代替）を試します。';
+                }
+            }
+        }
+
+        function showVibrateTestResult(ok, message) {
+            if (!vibrateTestResult) return;
+            vibrateTestResult.classList.remove('hidden');
+            vibrateTestResult.textContent = message;
+            vibrateTestResult.className = ok
+                ? 'text-[11px] mt-1.5 leading-snug text-emerald-300/90'
+                : 'text-[11px] mt-1.5 leading-snug text-amber-200/90';
         }
 
         let isListening = false;
@@ -275,16 +438,12 @@
         let alarmAudioCtx = null;
         /** アラーム中は画面スリープを防ぎ、通知＆振動の取りこぼしを減らす */
         let alarmWakeLock = null;
-        /** Capacitor Haptics のフォールバック繰り返し（AlarmVibrator 未使用時） */
+        /** Capacitor Haptics の繰り返し（iOS 本体バイブ / Android フォールバック） */
         let nativeHapticsInterval = null;
         /** AlarmVibrator.start() が成功してネイティブ側でループ振動中か */
         let nativeAlarmVibrateActive = false;
 
         const ALARM_NOTIFY_TAG = 'station-wakeup-alarm';
-
-        function isAndroidUserAgent() {
-            return /Android/i.test(navigator.userAgent || '');
-        }
 
         function registerServiceWorkerForAlarms() {
             if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
@@ -470,7 +629,7 @@
         }
 
         /**
-         * APK 専用: Android Vibrator + USAGE_ALARM で本体バイブをループ開始。
+         * Android APK: Vibrator + USAGE_ALARM でループ開始。
          * 成功したら true（JS 側の setInterval は不要）。
          */
         async function startNativeAlarmVibrate() {
@@ -496,36 +655,94 @@
             }
         }
 
-        /** テスト用の短い本体バイブ（AlarmVibrator → Haptics の順） */
-        async function pulseNativeDeviceVibrate(durationMs) {
-            if (!isCapacitorNative()) return;
-            const ms = typeof durationMs === 'number' ? durationMs : 500;
-            const P = getAlarmVibratorPlugin();
-            if (P && typeof P.pulse === 'function') {
-                try {
-                    await P.pulse({ duration: ms });
-                    return;
-                } catch (e) { /* fall through */ }
-            }
-            await pulseCapacitorHaptics();
-        }
-
-        /** Capacitor Haptics フォールバック（AlarmVibrator が無い場合） */
+        /** Capacitor Haptics 1回（iOS 本体バイブ / Android フォールバック） */
         async function pulseCapacitorHaptics() {
             try {
-                if (!isCapacitorNative()) return;
+                if (!isCapacitorNative()) return false;
                 const H = getCapacitorHapticsPlugin();
-                if (!H) return;
+                if (!H) return false;
                 const v = async (ms) => {
                     if (typeof H.vibrate === 'function') await H.vibrate({ duration: ms });
                 };
-                if (typeof H.notification === 'function') await H.notification({ type: 'WARNING' });
+                if (typeof H.notification === 'function') await H.notification({ type: 'ERROR' });
                 if (typeof H.impact === 'function') await H.impact({ style: 'HEAVY' });
                 await v(450);
-                await new Promise((r) => setTimeout(r, 80));
+                await new Promise((r) => setTimeout(r, 70));
+                if (typeof H.impact === 'function') await H.impact({ style: 'HEAVY' });
                 await v(450);
-                if (typeof H.impact === 'function') await H.impact({ style: 'MEDIUM' });
-            } catch (e) { /* ignore */ }
+                if (typeof H.notification === 'function') await H.notification({ type: 'WARNING' });
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        /**
+         * iOS 公式アプリ向け: Haptics.vibrate を繰り返す。
+         * （iOS の vibrate は duration 無視のため interval でループ）
+         */
+        async function startCapacitorHapticsLoop() {
+            if (!isCapacitorNative()) return false;
+            const H = getCapacitorHapticsPlugin();
+            if (!H) return false;
+            if (nativeHapticsInterval) {
+                clearInterval(nativeHapticsInterval);
+                nativeHapticsInterval = null;
+            }
+            const ok = await pulseCapacitorHaptics();
+            if (!ok) return false;
+            nativeHapticsInterval = setInterval(() => {
+                void pulseCapacitorHaptics();
+            }, 680);
+            return true;
+        }
+
+        /**
+         * 1回の試し振動。戻り値: { ok, method }
+         * method: android-body | ios-haptic | web-vibrate | audio-fallback | off | none
+         */
+        async function pulseAnyVibrate(durationMs) {
+            if (!isVibrateEnabled()) {
+                return { ok: false, method: 'off' };
+            }
+            const ms = typeof durationMs === 'number' ? durationMs : 500;
+            const plat = getRuntimePlatform();
+
+            if (plat === 'android-native') {
+                const P = getAlarmVibratorPlugin();
+                if (P && typeof P.pulse === 'function') {
+                    try {
+                        await P.pulse({ duration: ms });
+                        return { ok: true, method: 'android-body' };
+                    } catch (e) { /* fall through */ }
+                }
+                if (await pulseCapacitorHaptics()) {
+                    return { ok: true, method: 'android-body' };
+                }
+            }
+
+            if (plat === 'ios-native' || (isCapacitorNative() && plat !== 'android-native')) {
+                if (await pulseCapacitorHaptics()) {
+                    return { ok: true, method: 'ios-haptic' };
+                }
+            }
+
+            if (typeof navigator.vibrate === 'function') {
+                try {
+                    navigator.vibrate(0);
+                    navigator.vibrate([ms, 80, Math.max(120, Math.floor(ms * 0.7))]);
+                    return { ok: true, method: 'web-vibrate' };
+                } catch (e) { /* fall through */ }
+            }
+
+            // iPhone Safari 等: 振動 API が無いので短い音で代替フィードバック
+            if (plat === 'ios-web' || plat === 'other-web') {
+                primeAlarmAudioFromUserGesture();
+                playAlarmBuzzTone();
+                return { ok: false, method: 'audio-fallback' };
+            }
+
+            return { ok: false, method: 'none' };
         }
 
         /**
@@ -818,13 +1035,15 @@
             if (alarmShowing) return;
             alarmShowing = true;
             alarmGestureVibrateDone = false;
-            if (typeof navigator.vibrate === 'function') {
-                try {
-                    navigator.vibrate(0);
-                    navigator.vibrate([400, 100, 400, 100, 400]);
-                } catch (e) { /* ignore */ }
+            if (isVibrateEnabled()) {
+                if (typeof navigator.vibrate === 'function') {
+                    try {
+                        navigator.vibrate(0);
+                        navigator.vibrate([400, 100, 400, 100, 400]);
+                    } catch (e) { /* ignore */ }
+                }
+                void pulseAnyVibrate(500);
             }
-            void pulseNativeDeviceVibrate(500);
             isListening = false;
             clearSpeechTimers();
             if (recognition) {
@@ -838,7 +1057,7 @@
             }
             alarmBox.classList.add('vibrate-active');
 
-            // バイブレーション開始（APK では本体バイブ優先）
+            // バイブレーション開始（Android/iPhone 公式アプリは本体バイブ優先）
             startVibration();
             
             // 視覚的なフィードバック
@@ -872,12 +1091,19 @@
             void acquireAlarmWakeLock();
 
             const androidUa = isAndroidUserAgent();
-            const onNativeApk = isCapacitorNative();
-
-            // APK: Android Vibrator（USAGE_ALARM）でループ振動を開始
+            const plat = getRuntimePlatform();
+            const vibrateOn = isVibrateEnabled();
             let nativeLoopOk = false;
-            if (onNativeApk) {
-                nativeLoopOk = await startNativeAlarmVibrate();
+
+            if (vibrateOn) {
+                // 1) Android 公式アプリ: 本体 Vibrator ループ
+                if (plat === 'android-native') {
+                    nativeLoopOk = await startNativeAlarmVibrate();
+                }
+                // 2) iPhone 公式アプリ（および Android フォールバック）: Haptics ループ
+                if (!nativeLoopOk && isCapacitorNative()) {
+                    nativeLoopOk = await startCapacitorHapticsLoop();
+                }
             }
 
             if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -887,8 +1113,8 @@
                 }, 2600);
             }
 
-            // Web / ネイティブループ失敗時のみ navigator.vibrate を繰り返し
-            if (!nativeLoopOk && typeof navigator.vibrate === 'function') {
+            // 3) Web: navigator.vibrate を繰り返し
+            if (vibrateOn && !nativeLoopOk && typeof navigator.vibrate === 'function') {
                 [0, 40, 90, 160].forEach((ms) => {
                     setTimeout(() => pulseHardwareVibrate(), ms);
                 });
@@ -897,25 +1123,14 @@
                 }, 950);
             }
 
-            /** 音声認識コールバック起因では navigator.vibrate が無視される端末がある。通知許可＋バイブに加え、Android は低周波音＋ビープで補助 */
-            if (androidUa) {
+            /** アラーム音。iPhone ブラウザ等でバイブ不可のときは特に重要 */
+            if (androidUa || isIosLikePlatform() || typeof navigator.vibrate !== 'function' || !vibrateOn || !nativeLoopOk) {
                 playAlarmAndroidRumble();
                 playAlarmBuzzTone();
                 alarmBuzzInterval = setInterval(() => {
                     playAlarmAndroidRumble();
                     setTimeout(() => playAlarmBuzzTone(), 140);
                 }, 2000);
-            } else if (typeof navigator.vibrate !== 'function') {
-                playAlarmBuzzTone();
-                alarmBuzzInterval = setInterval(() => playAlarmBuzzTone(), 2000);
-            }
-
-            // AlarmVibrator が使えない APK 向け: Haptics プラグインでフォールバック
-            if (onNativeApk && !nativeLoopOk) {
-                void pulseCapacitorHaptics();
-                nativeHapticsInterval = setInterval(() => {
-                    void pulseCapacitorHaptics();
-                }, 650);
             }
         }
 
@@ -956,8 +1171,8 @@
 
             const beginMonitor = () => {
                 primeAlarmAudioFromUserGesture();
-                if (typeof navigator.vibrate === 'function') {
-                    try { navigator.vibrate(15); } catch (e) { /* ignore */ }
+                if (isVibrateEnabled()) {
+                    void pulseAnyVibrate(20);
                 }
 
                 clearSpeechTimers();
@@ -1013,26 +1228,42 @@
         alarmPanel.addEventListener('pointerdown', () => {
             if (!alarmShowing || alarmGestureVibrateDone) return;
             alarmGestureVibrateDone = true;
-            // ネイティブループ中は追加パルス不要。Web 時のみジェスチャー経由で vibrate を通す
-            if (!nativeAlarmVibrateActive) {
-                void pulseNativeDeviceVibrate(700);
-                if (typeof navigator.vibrate === 'function') {
-                    try {
-                        navigator.vibrate(0);
-                        navigator.vibrate([450, 120, 450, 120, 450, 120, 700]);
-                    } catch (e) { /* ignore */ }
-                }
+            // ネイティブループ中は追加パルス不要。Web / iOS 時はジェスチャー経由で振動を通す
+            if (!nativeAlarmVibrateActive && isVibrateEnabled()) {
+                void pulseAnyVibrate(700);
             }
         }, true);
 
+        if (vibrateToggleBtn) {
+            vibrateToggleBtn.addEventListener('click', () => {
+                setVibrateEnabled(!isVibrateEnabled());
+                if (vibrateTestResult) vibrateTestResult.classList.add('hidden');
+            });
+        }
+
         if (hapticTestBtn) {
-            hapticTestBtn.addEventListener('click', () => {
+            hapticTestBtn.addEventListener('click', async () => {
                 primeAlarmAudioFromUserGesture();
-                void pulseNativeDeviceVibrate(600);
+                const result = await pulseAnyVibrate(600);
+                if (result.method === 'off') {
+                    showVibrateTestResult(false, 'バイブが OFF です。上のスイッチを ON にしてからもう一度試してください。');
+                } else if (result.method === 'android-body') {
+                    showVibrateTestResult(true, '本体バイブを鳴らしました（Android）。振動を感じましたか？');
+                } else if (result.method === 'ios-haptic') {
+                    showVibrateTestResult(true, '本体バイブ（触覚）を鳴らしました（iPhone）。振動を感じましたか？');
+                } else if (result.method === 'web-vibrate') {
+                    showVibrateTestResult(true, 'ブラウザ振動を送りました。感じない場合は公式アプリ版を使ってください。');
+                } else if (result.method === 'audio-fallback') {
+                    showVibrateTestResult(false, 'このブラウザでは本体バイブが使えません。短い音で代用しました。確実な振動には公式アプリを使ってください。');
+                } else {
+                    showVibrateTestResult(false, '振動を開始できませんでした。端末の設定でバイブが無効になっていないか確認してください。');
+                }
             });
         }
 
         loadAlarmVolumeFromStorage();
+        syncVibrateToggleUI();
+        updateVibrateCapabilityUI();
         if (alarmVolumeRange) {
             alarmVolumeRange.addEventListener('input', () => persistAlarmVolume());
         }
@@ -1048,13 +1279,12 @@
             if (document.visibilityState === 'visible' && alarmShowing) {
                 void acquireAlarmWakeLock();
             }
-            updateNativeHapticTestUI();
+            updateVibrateCapabilityUI();
         });
-        window.addEventListener('focus', updateNativeHapticTestUI);
+        window.addEventListener('focus', updateVibrateCapabilityUI);
 
-        updateNativeHapticTestUI();
-        requestAnimationFrame(updateNativeHapticTestUI);
-        setTimeout(updateNativeHapticTestUI, 600);
+        requestAnimationFrame(updateVibrateCapabilityUI);
+        setTimeout(updateVibrateCapabilityUI, 600);
 
         renderSavedStations();
     </script>
