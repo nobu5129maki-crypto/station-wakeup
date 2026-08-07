@@ -4,37 +4,40 @@ Station WakeUp — Android / iPhone で「本体バイブ」を使う手順
 ブラウザだけでは機種・OS の制限で振動が効かないことがあります。
 公式アプリ（Capacitor）なら本体バイブを使えます。
 
-■ 共通（初回）
+■ いちばん簡単な方法（Android）
+
+1. サイト上部の「公式 APK をインストール」をタップ
+   または
+   https://github.com/nobu5129maki-crypto/station-wakeup/releases/tag/android-latest
+2. ダウンロードした station-wakeup.apk を開いてインストール
+3. 以後はホーム画面の「Station WakeUp」アイコンから起動
+   （ブラウザやホーム画面追加ではなく、公式アプリを使ってください）
+
+main に push すると GitHub Actions が最新 APK を android-latest リリースに更新します。
+
+■ 共通（開発者向け）
 
    npm install
    npm run sync
 
-■ Android（APK）
+■ Android（Android Studio）
 
    npm run android:sync
    npm run android:open
 
-Android Studio で Run → 端末にインストール。
-アラーム時は AlarmVibrator（USAGE_ALARM）で本体バイブがループします。
-
-■ iPhone（iOS アプリ）
-
-   Mac + Xcode が必要です。
+■ iPhone（Mac + Xcode）
 
    npm run ios:sync
    npm run ios:open
 
-Xcode で署名を設定して実機にインストール。
-アラーム時は Capacitor Haptics で本体バイブ（触覚）を繰り返します。
-
 ■ 画面での確認
 
-1. 「② バイブレーション」が ON であること
-2. 「今の端末」に方式が表示されること
+1. バナーが「✓ 公式アプリ版で動作中」になること
+2. 「② バイブレーション」が ON
 3. 「バイブを試す」で振動すること
 
 ■ メモ
 
-- Web 版の駅名検知・音・点滅はそのまま使えます
-- iPhone の Safari だけでは本体バイブ API が使えません（アプリ版を推奨）
-- ルートの index.html を直したら必ず npm run sync（または android:sync / ios:sync）
+- ブラウザの「ホーム画面に追加」は公式アプリではありません
+- インストール後にサイトを開くと「公式アプリで開く」が出ます（Android）
+- ルートの index.html を直したら必ず npm run sync

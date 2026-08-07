@@ -48,6 +48,13 @@
             <p class="text-slate-400 mt-2 text-sm">車内アナウンスを聞き取り、目的地の手前で起こします</p>
         </header>
 
+        <!-- 公式アプリ状態バナー（JS で内容切替） -->
+        <div id="officialAppBanner" class="rounded-xl border px-4 py-3 text-sm leading-snug">
+            <p id="officialAppBannerTitle" class="font-semibold text-slate-200">公式アプリを確認中…</p>
+            <p id="officialAppBannerHint" class="text-[11px] text-slate-500 mt-1">端末の起動方法を確認しています。</p>
+            <div id="officialAppActions" class="mt-3 flex flex-col gap-2"></div>
+        </div>
+
         <!-- Status（通常は一行。問題時のみ開き方を展開） -->
         <div id="debugStatus" class="bg-slate-800 rounded-lg text-xs font-mono text-slate-400 border border-slate-700 overflow-hidden">
             <details id="setupHelpDetails" class="group">
@@ -151,10 +158,10 @@
         <footer class="text-slate-500 text-xs pb-10 leading-relaxed space-y-3">
             <p class="text-center text-slate-400 text-[13px] font-medium">使い方のポイント</p>
             <ul class="list-disc pl-5 space-y-1.5 text-slate-400 max-w-md mx-auto">
-                <li><strong class="text-slate-300">音量を上げる</strong>＋バイブ ON で起きやすくなります。</li>
-                <li>検知すると <strong class="text-slate-300">画面点滅・音・バイブ</strong>で知らせます。</li>
-                <li><strong class="text-slate-300">Android / iPhone の公式アプリ</strong>なら本体バイブを確実に使えます。「バイブを試す」で確認してください。</li>
-                <li>iPhone の Safari だけでは本体バイブ API が使えないため、確実な振動にはアプリ版を使ってください。</li>
+                <li><strong class="text-slate-300">公式アプリ版</strong>をインストールすると、本体バイブが確実に使え、次回からいつも同じアプリで開けます。</li>
+                <li>Android は上の「公式 APK をインストール」→ ホーム画面のアイコンから起動してください。</li>
+                <li>ブラウザの「ホーム画面に追加」は便利ですが、<strong class="text-slate-300">公式アプリではありません</strong>（iPhone では特にバイブ制限あり）。</li>
+                <li>検知すると <strong class="text-slate-300">画面点滅・音・バイブ</strong>で知らせます。音量を上げてバイブ ON にすると起きやすいです。</li>
             </ul>
             <p class="text-center text-[11px] text-slate-600">開き方の注意: <code class="font-mono text-slate-500">https</code> または <code class="font-mono text-slate-500">localhost</code>。スマホだけで PC の LAN アドレス（例: 192.168…）だとマイクが使えないことがあります。</p>
         </footer>
@@ -172,6 +179,11 @@
         const STORAGE_KEY = 'stationWakeUp_savedStations';
         const ALARM_VOLUME_KEY = 'stationWakeUp_alarmVolumePct';
         const VIBRATE_ENABLED_KEY = 'stationWakeUp_vibrateEnabled';
+        const OFFICIAL_APP_PREF_KEY = 'stationWakeUp_preferOfficialApp';
+        const OFFICIAL_APP_MARKED_KEY = 'stationWakeUp_markedOfficialInstalled';
+        const OFFICIAL_APK_URL = 'https://github.com/nobu5129maki-crypto/station-wakeup/releases/download/android-latest/station-wakeup.apk';
+        const OFFICIAL_RELEASE_URL = 'https://github.com/nobu5129maki-crypto/station-wakeup/releases/tag/android-latest';
+        const OFFICIAL_APP_SCHEME = 'stationwakeup://open';
         const MAX_SAVED = 15;
 
         function getAlarmVolumePercent() {
@@ -311,6 +323,203 @@
         function isIosLikePlatform() {
             const p = getRuntimePlatform();
             return p === 'ios-native' || p === 'ios-web';
+        }
+
+        function isDisplayStandalone() {
+            try {
+                if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+                if (typeof navigator.standalone === 'boolean' && navigator.standalone) return true;
+            } catch (e) { /* ignore */ }
+            return false;
+        }
+
+        function prefersOfficialApp() {
+            try {
+                return localStorage.getItem(OFFICIAL_APP_PREF_KEY) === '1';
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function setPreferOfficialApp(on) {
+            try {
+                localStorage.setItem(OFFICIAL_APP_PREF_KEY, on ? '1' : '0');
+                if (on) localStorage.setItem(OFFICIAL_APP_MARKED_KEY, '1');
+            } catch (e) { /* ignore */ }
+        }
+
+        function hasMarkedOfficialInstalled() {
+            try {
+                return localStorage.getItem(OFFICIAL_APP_MARKED_KEY) === '1';
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function markOfficialInstalled() {
+            try {
+                localStorage.setItem(OFFICIAL_APP_MARKED_KEY, '1');
+                localStorage.setItem(OFFICIAL_APP_PREF_KEY, '1');
+            } catch (e) { /* ignore */ }
+        }
+
+        /** Android Intent URL: インストール済みなら公式アプリを開く */
+        function getAndroidOpenAppIntentUrl() {
+            const fallback = encodeURIComponent(window.location.href.split('#')[0]);
+            return `intent://open#Intent;scheme=stationwakeup;package=jp.stationwakeup.app;S.browser_fallback_url=${fallback};end`;
+        }
+
+        function openOfficialAndroidApp() {
+            markOfficialInstalled();
+            setPreferOfficialApp(true);
+            try {
+                window.location.href = OFFICIAL_APP_SCHEME;
+            } catch (e) { /* ignore */ }
+            setTimeout(() => {
+                try { window.location.href = getAndroidOpenAppIntentUrl(); } catch (e2) { /* ignore */ }
+            }, 280);
+        }
+
+        function downloadOfficialApk() {
+            markOfficialInstalled();
+            setPreferOfficialApp(true);
+            const a = document.createElement('a');
+            a.href = OFFICIAL_APK_URL;
+            a.rel = 'noopener';
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            updateOfficialAppUI();
+            showOfficialAppToast('APK のダウンロードを開始しました。インストール後はホーム画面の「Station WakeUp」から開いてください。');
+        }
+
+        function showOfficialAppToast(msg) {
+            const hint = document.getElementById('officialAppBannerHint');
+            if (hint) {
+                hint.textContent = msg;
+                hint.className = 'text-[11px] text-amber-200/90 mt-1 leading-relaxed';
+            }
+        }
+
+        function makeOfficialActionButton(label, onClick, style) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = label;
+            btn.className = style || 'w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors';
+            btn.addEventListener('click', onClick);
+            return btn;
+        }
+
+        function makeOfficialLinkButton(label, href, style) {
+            const a = document.createElement('a');
+            a.href = href;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.textContent = label;
+            a.className = style || 'block w-full text-center py-2.5 rounded-lg border border-slate-600 text-slate-200 text-sm font-medium hover:bg-slate-700/70 transition-colors';
+            return a;
+        }
+
+        function updateOfficialAppUI() {
+            const banner = document.getElementById('officialAppBanner');
+            const titleEl = document.getElementById('officialAppBannerTitle');
+            const hint = document.getElementById('officialAppBannerHint');
+            const actions = document.getElementById('officialAppActions');
+            if (!banner || !titleEl || !hint || !actions) return;
+
+            actions.innerHTML = '';
+            const plat = getRuntimePlatform();
+            const standalone = isDisplayStandalone();
+
+            if (isCapacitorNative()) {
+                markOfficialInstalled();
+                banner.className = 'rounded-xl border border-emerald-500/50 bg-emerald-950/50 px-4 py-3 text-sm leading-snug';
+                titleEl.textContent = '✓ 公式アプリ版で動作中';
+                titleEl.className = 'font-semibold text-emerald-200';
+                hint.textContent = plat === 'ios-native'
+                    ? 'iPhone 公式アプリです。本体バイブ（触覚）が使えます。いつもこのアイコンから開いてください。'
+                    : 'Android 公式アプリです。本体バイブが使えます。いつもホーム画面のこのアイコンから開いてください。';
+                hint.className = 'text-[11px] text-emerald-100/70 mt-1 leading-relaxed';
+                return;
+            }
+
+            if (standalone) {
+                banner.className = 'rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-sm leading-snug';
+                titleEl.textContent = 'ホーム画面アプリ（ブラウザ版）で動作中';
+                titleEl.className = 'font-semibold text-amber-100';
+                hint.textContent = 'これは公式アプリではありません。本体バイブを確実に使うには、下から公式 APK / iOS アプリを入れてください。';
+                hint.className = 'text-[11px] text-amber-100/70 mt-1 leading-relaxed';
+            } else {
+                banner.className = 'rounded-xl border border-slate-600 bg-slate-800/80 px-4 py-3 text-sm leading-snug';
+                titleEl.textContent = hasMarkedOfficialInstalled() || prefersOfficialApp()
+                    ? '公式アプリを優先して使いましょう'
+                    : '公式アプリ版で使う（おすすめ）';
+                titleEl.className = 'font-semibold text-slate-100';
+                hint.textContent = '一度インストールすれば、次回からいつも本体バイブ対応の公式アプリで開けます。';
+                hint.className = 'text-[11px] text-slate-500 mt-1 leading-relaxed';
+            }
+
+            if (plat === 'android-web' || (plat === 'other-web' && /Android/i.test(navigator.userAgent || ''))) {
+                if (hasMarkedOfficialInstalled() || prefersOfficialApp()) {
+                    actions.appendChild(makeOfficialActionButton('公式アプリで開く', () => openOfficialAndroidApp()));
+                }
+                actions.appendChild(makeOfficialActionButton(
+                    hasMarkedOfficialInstalled() ? '公式 APK を再ダウンロード' : '公式 APK をインストール',
+                    () => downloadOfficialApk(),
+                    hasMarkedOfficialInstalled()
+                        ? 'w-full py-2.5 rounded-lg border border-blue-500/60 text-blue-100 text-sm font-bold hover:bg-blue-950/50 transition-colors'
+                        : 'w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors'
+                ));
+                actions.appendChild(makeOfficialLinkButton('リリースページを開く', OFFICIAL_RELEASE_URL));
+                actions.appendChild(makeOfficialActionButton(
+                    'インストール済みとして記憶する',
+                    () => {
+                        markOfficialInstalled();
+                        updateOfficialAppUI();
+                        showOfficialAppToast('記憶しました。次回このサイトを開いたとき「公式アプリで開く」を表示します。');
+                    },
+                    'w-full py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 underline underline-offset-2'
+                ));
+            } else if (plat === 'ios-web') {
+                hint.textContent = 'iPhone の Safari では本体バイブ API が使えません。公式アプリ（Xcode でインストール）を使うと、いつも触覚バイブ付きで起動できます。ホーム画面追加だけでは不十分です。';
+                actions.appendChild(makeOfficialLinkButton(
+                    'iOS インストール手順（BUILD-APP）',
+                    'https://github.com/nobu5129maki-crypto/station-wakeup/blob/main/BUILD-APP.txt'
+                ));
+                actions.appendChild(makeOfficialActionButton(
+                    '公式アプリを入れた（次回から優先案内）',
+                    () => {
+                        markOfficialInstalled();
+                        updateOfficialAppUI();
+                        showOfficialAppToast('記憶しました。ホーム画面の公式アプリアイコンから開いてください。');
+                    },
+                    'w-full py-2.5 rounded-lg border border-slate-600 text-slate-200 text-sm font-medium hover:bg-slate-700/70 transition-colors'
+                ));
+            } else {
+                actions.appendChild(makeOfficialLinkButton('Android 公式 APK', OFFICIAL_APK_URL));
+                actions.appendChild(makeOfficialLinkButton(
+                    'ビルド手順',
+                    'https://github.com/nobu5129maki-crypto/station-wakeup/blob/main/BUILD-APP.txt'
+                ));
+            }
+        }
+
+        /** ブラウザで公式アプリ優先のユーザーは、可能ならアプリ起動を一度試す */
+        function maybeAutoOpenOfficialApp() {
+            if (isCapacitorNative()) return;
+            if (!prefersOfficialApp() && !hasMarkedOfficialInstalled()) return;
+            const plat = getRuntimePlatform();
+            if (plat !== 'android-web' && !(plat === 'other-web' && /Android/i.test(navigator.userAgent || ''))) return;
+            try {
+                if (sessionStorage.getItem('stationWakeUp_autoOpenTried') === '1') return;
+                sessionStorage.setItem('stationWakeUp_autoOpenTried', '1');
+            } catch (e) { /* ignore */ }
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = OFFICIAL_APP_SCHEME;
+            document.body.appendChild(iframe);
+            setTimeout(() => { try { iframe.remove(); } catch (e) { /* ignore */ } }, 1500);
         }
 
         function isVibrateEnabled() {
@@ -1264,6 +1473,8 @@
         loadAlarmVolumeFromStorage();
         syncVibrateToggleUI();
         updateVibrateCapabilityUI();
+        updateOfficialAppUI();
+        maybeAutoOpenOfficialApp();
         if (alarmVolumeRange) {
             alarmVolumeRange.addEventListener('input', () => persistAlarmVolume());
         }
@@ -1280,11 +1491,16 @@
                 void acquireAlarmWakeLock();
             }
             updateVibrateCapabilityUI();
+            updateOfficialAppUI();
         });
-        window.addEventListener('focus', updateVibrateCapabilityUI);
+        window.addEventListener('focus', () => {
+            updateVibrateCapabilityUI();
+            updateOfficialAppUI();
+        });
 
         requestAnimationFrame(updateVibrateCapabilityUI);
         setTimeout(updateVibrateCapabilityUI, 600);
+        setTimeout(updateOfficialAppUI, 600);
 
         renderSavedStations();
     </script>

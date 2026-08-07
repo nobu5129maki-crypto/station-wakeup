@@ -12,5 +12,13 @@
       "type": "image/svg+xml",
       "purpose": "any"
     }
-  ]
+  ],
+  "related_applications": [
+    {
+      "platform": "play",
+      "id": "jp.stationwakeup.app",
+      "url": "https://github.com/nobu5129maki-crypto/station-wakeup/releases/tag/android-latest"
+    }
+  ],
+  "prefer_related_applications": false
 }

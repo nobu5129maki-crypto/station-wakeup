@@ -3,6 +3,13 @@
 	"appName": "Station WakeUp",
 	"webDir": "public",
 	"server": {
-		"androidScheme": "https"
+		"androidScheme": "https",
+		"iosScheme": "capacitor"
+	},
+	"android": {
+		"allowMixedContent": false
+	},
+	"plugins": {
+		"Haptics": {}
 	}
 }
