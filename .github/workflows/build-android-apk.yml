@@ -43,25 +43,61 @@ jobs:
       - name: Ensure hosted APK is not bundled into the app
         run: rm -rf android/app/src/main/assets/public/downloads
 
-      - name: Build debug APK (sideload / 公式配布用)
+      - name: Build signed release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
 
-      - name: Prepare artifact
+      - name: Prepare artifacts (APK + ZIP)
         run: |
           mkdir -p dist downloads public/downloads
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/station-wakeup.apk
-          cp dist/station-wakeup.apk downloads/station-wakeup.apk
-          cp dist/station-wakeup.apk public/downloads/station-wakeup.apk
-          ls -lh dist/station-wakeup.apk downloads/station-wakeup.apk public/downloads/station-wakeup.apk
+          SRC="android/app/build/outputs/apk/release/app-release.apk"
+          test -f "$SRC"
+          cp "$SRC" dist/StationWakeUp-Official.apk
+          cp "$SRC" downloads/StationWakeUp-Official.apk
+          cp "$SRC" public/downloads/StationWakeUp-Official.apk
+          # 旧ファイル名互換
+          cp "$SRC" downloads/station-wakeup.apk
+          cp "$SRC" public/downloads/station-wakeup.apk
+          # ZIP（Chromeの警告が出にくい配布用）
+          printf '%s\n' \
+            'Station WakeUp 公式アプリ' \
+            '' \
+            'このZIPは有料ノート購入者向けの公式配布です。' \
+            'Androidの確認画面（保護のためブロック等）は、Playストア外アプリへの標準的な案内です。' \
+            '危険なウイルスという意味ではありません。' \
+            '' \
+            '手順:' \
+            '1. ZIPを開き StationWakeUp-Official.apk を取り出す' \
+            '2. APKを開く' \
+            '3. 「詳細」→「それでもインストール」で進める' \
+            '4. ホーム画面の Station WakeUp から起動' \
+            > dist/はじめにお読みください.txt
+          (cd dist && zip -9 StationWakeUp-Official.zip StationWakeUp-Official.apk はじめにお読みください.txt)
+          cp dist/StationWakeUp-Official.zip downloads/StationWakeUp-Official.zip
+          cp dist/StationWakeUp-Official.zip public/downloads/StationWakeUp-Official.zip
+          ls -lh dist downloads public/downloads
+
+      - name: Verify release signing (not Android Debug)
+        run: |
+          CERT=$(unzip -p dist/StationWakeUp-Official.apk 'META-INF/*.RSA' 2>/dev/null | keytool -printcert 2>/dev/null || true)
+          echo "$CERT" | head -20
+          if echo "$CERT" | grep -qi 'Android Debug'; then
+            echo 'ERROR: still signed with Android Debug'
+            exit 1
+          fi
+          if ! echo "$CERT" | grep -qi 'Station WakeUp'; then
+            echo 'WARN: unexpected cert subject (continuing)'
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: station-wakeup-apk
-          path: dist/station-wakeup.apk
+          name: station-wakeup-official
+          path: |
+            dist/StationWakeUp-Official.apk
+            dist/StationWakeUp-Official.zip
 
       - name: Publish / update android-latest release
         uses: softprops/action-gh-release@v2
@@ -69,31 +105,30 @@ jobs:
           tag_name: android-latest
           name: Official Android App (latest)
           body: |
-            Station WakeUp 公式 Android アプリ（APK）です。
+            Station WakeUp 公式 Android アプリです（リリース署名済み）。
 
-            ## スマホでのダウンロード（推奨）
-            サイト直リンク（GitHub経由より確実です）:
-            https://station-wakeup.vercel.app/downloads/station-wakeup.apk
+            ## 推奨ダウンロード
+            - ZIP: https://station-wakeup.vercel.app/downloads/StationWakeUp-Official.zip
+            - 入れ方: https://station-wakeup.vercel.app/download.html
 
-            ダウンロード専用ページ:
-            https://station-wakeup.vercel.app/download.html
-
-            - インストール後はホーム画面の **Station WakeUp** アイコンから起動してください
-            - 本体バイブ・マイク検知がブラウザ版より確実です
-            - 不明な提供元のインストールを許可する必要がある場合があります
-          files: dist/station-wakeup.apk
+            Android の「保護のためブロック」等は Playストア外アプリへの標準確認です。
+            詳細 → それでもインストール、で進めてください。
+          files: |
+            dist/StationWakeUp-Official.apk
+            dist/StationWakeUp-Official.zip
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit hosted APK for Vercel/GitHub Pages same-origin download
+      - name: Commit hosted packages for Vercel/GitHub Pages
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add downloads/station-wakeup.apk public/downloads/station-wakeup.apk
+          git add downloads/StationWakeUp-Official.apk downloads/StationWakeUp-Official.zip downloads/station-wakeup.apk \
+                  public/downloads/StationWakeUp-Official.apk public/downloads/StationWakeUp-Official.zip public/downloads/station-wakeup.apk
           if git diff --staged --quiet; then
-            echo "APK unchanged"
+            echo "Packages unchanged"
           else
-            git commit -m "chore: update hosted official APK [skip ci]"
+            git commit -m "chore: update hosted official release packages [skip ci]"
             git push
           fi

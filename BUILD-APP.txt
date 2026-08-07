@@ -1,46 +1,40 @@
-Station WakeUp — Android / iPhone で「本体バイブ」を使う手順
-============================================================
+Station WakeUp — 公式アプリの入れ方
+====================================
 
-ブラウザだけでは機種・OS の制限で振動が効かないことがあります。
-公式アプリ（Capacitor）なら本体バイブを使えます。
+■ お客様向け（いちばん簡単）
 
-■ いちばん簡単な方法（Android）
+1. https://station-wakeup.vercel.app/download.html を開く
+2. 「公式アプリ（ZIP）をダウンロード」
+3. ZIP を開き StationWakeUp-Official.apk をインストール
 
-1. スマホで次を開く（GitHub経由より確実）:
-   https://station-wakeup.vercel.app/download.html
-   または
-   https://station-wakeup.vercel.app/downloads/station-wakeup.apk
-2. ダウンロード完了後、通知または「ダウンロード」フォルダから APK を開く
-3. 「不明なアプリ」の許可が必要な場合あり
-4. 以後はホーム画面の「Station WakeUp」アイコンから起動
+Android の確認画面について:
+- 「有害なファイルの可能性」「保護のためブロック」は
+  Playストア外アプリへの標準的な案内です
+- 危険なウイルスという意味ではありません（有料ノート公式です）
+- 「詳細」→「ダウンロードを続行 / それでもインストール」で進めてください
+- 以前の仮版（debug）を入れている場合は、一度アンインストールしてから入れてください
 
-※ GitHub Releases のリンクはスマホで「ダウンロードしています…」のまま
-  止まることがあるため、上記のサイト直リンクを使ってください。
+■ 公式Android APK（推奨・同サイト直配信）
+  ZIP（推奨・警告が出にくい）:
+  https://station-wakeup.vercel.app/downloads/StationWakeUp-Official.zip
+  APK（直接）:
+  https://station-wakeup.vercel.app/downloads/StationWakeUp-Official.apk
+  ※ 互換用: /downloads/station-wakeup.apk も同じ正式版です。
+  ※ 正式版は release 署名です（debug 署名ではありません）。
+  ※ ZIP → 展開 → APK の順が、Chrome の警告を避けやすいです。
 
-■ 共通（開発者向け）
+■ GitHub Releases（バックアップ）
+  https://github.com/nobu5129maki-crypto/station-wakeup/releases/tag/android-latest
+  Assets: StationWakeUp-Official.zip / StationWakeUp-Official.apk
+
+■ 開発者向け
+
+リリース署名キー: android/keystore/release.jks
+設定: android/keystore.properties
 
    npm install
-   npm run sync
-
-■ Android（Android Studio）
-
    npm run android:sync
-   npm run android:open
+   cd android && ./gradlew assembleRelease
 
-■ iPhone（Mac + Xcode）
-
-   npm run ios:sync
-   npm run ios:open
-
-■ 画面での確認
-
-1. バナーが「✓ 公式アプリ版で動作中」になること
-2. 「② バイブレーション」が ON
-3. 「バイブを試す」で振動すること
-4. 監視開始で「聞き取り中（公式アプリ）」になること（マイク許可が必要）
-
-■ メモ
-
-- ブラウザの「ホーム画面に追加」は公式アプリではありません
-- 公式 APK は downloads/station-wakeup.apk としてサイトに同梱されます
-- ルートの index.html を直したら必ず npm run sync
+成果物:
+  android/app/build/outputs/apk/release/app-release.apk

@@ -3,34 +3,86 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Station WakeUp 公式APKダウンロード</title>
+  <title>Station WakeUp 公式アプリの入れ方</title>
   <style>
-    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
-    main { max-width: 28rem; margin: 40px auto; }
-    h1 { color: #60a5fa; font-size: 1.4rem; }
-    p { color: #94a3b8; line-height: 1.6; font-size: 0.95rem; }
+    :root { color-scheme: dark; }
+    body { font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
+    main { max-width: 28rem; margin: 32px auto 48px; }
+    h1 { color: #60a5fa; font-size: 1.45rem; margin: 0 0 8px; }
+    .lead { color: #94a3b8; line-height: 1.7; font-size: 0.95rem; margin: 0 0 18px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 16px; margin: 14px 0; }
+    .card h2 { margin: 0 0 8px; font-size: 1rem; color: #f8fafc; }
+    .card p, .card li { color: #94a3b8; font-size: 0.88rem; line-height: 1.65; }
+    .card ol { margin: 8px 0 0; padding-left: 1.2rem; }
+    .trust { background: #052e1b; border-color: #166534; }
+    .trust p { color: #bbf7d0; }
     a.btn {
-      display: block; text-align: center; margin-top: 20px; padding: 16px;
+      display: block; text-align: center; margin-top: 10px; padding: 15px 16px;
       background: #2563eb; color: #fff; text-decoration: none; border-radius: 12px; font-weight: 700;
     }
+    a.btn.secondary { background: transparent; border: 1px solid #475569; color: #e2e8f0; font-weight: 600; }
     a.btn:active { transform: scale(0.98); }
-    .note { margin-top: 16px; font-size: 0.8rem; color: #64748b; }
+    .note { margin-top: 14px; font-size: 0.8rem; color: #64748b; line-height: 1.6; }
+    .ok { color: #86efac; font-weight: 700; }
   </style>
 </head>
 <body>
   <main>
-    <h1>Station WakeUp 公式APK</h1>
-    <p>下のボタンをタップしてダウンロードしてください。終わったら通知または「ダウンロード」フォルダから APK を開いてインストールします。</p>
-    <a class="btn" id="apkLink" href="./downloads/station-wakeup.apk" download="station-wakeup.apk">公式APKをダウンロード</a>
-    <p class="note">進まない場合は、リンクを長押し →「リンクをダウンロード」を選ぶか、次を開いてください:</p>
-    <p class="note"><a href="https://nobu5129maki-crypto.github.io/station-wakeup/downloads/station-wakeup.apk" style="color:#93c5fd" download="station-wakeup.apk">GitHub Pages 予備リンク</a></p>
-    <p class="note"><a href="./index.html" style="color:#93c5fd">アプリの説明ページに戻る</a></p>
+    <h1>Station WakeUp 公式アプリ</h1>
+    <p class="lead">有料ノート購入者向けの公式アプリです。デザインは当初の画面のまま、本体バイブと駅名の聞き取りに対応しています。</p>
+
+    <div class="card trust">
+      <h2><span class="ok">安心ポイント</span></h2>
+      <p>このファイルは Station WakeUp の公式配布です。ウイルスではありません。Playストア外のアプリでは、Android が確認画面を出すことがあります（標準の保護機能です）。</p>
+    </div>
+
+    <div class="card">
+      <h2>1. 公式アプリを入手</h2>
+      <p>まずは ZIP（おすすめ）です。Chrome の警告が出にくい形式です。</p>
+      <a class="btn" href="./downloads/StationWakeUp-Official.zip" download="StationWakeUp-Official.zip">公式アプリ（ZIP）をダウンロード</a>
+      <a class="btn secondary" href="./downloads/StationWakeUp-Official.apk" download="StationWakeUp-Official.apk">APKを直接ダウンロード</a>
+    </div>
+
+    <div class="card">
+      <h2>2. 「有害なファイルの可能性」と出たら</h2>
+      <p>Chrome が Playストア外のアプリに出す一般的な案内です。</p>
+      <ol>
+        <li>「詳細」をタップ</li>
+        <li>「サイトを信頼してダウンロード」または「ダウンロードを続行」をタップ</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>3. 「デバイスを保護するためブロック」と出たら</h2>
+      <p>Play プロテクトの確認画面です。危険という断定ではなく「ストア外です」という注意です。</p>
+      <ol>
+        <li>「詳細情報」をタップ</li>
+        <li>「インストール anyway」または「それでもインストール」をタップ</li>
+        <li>ホーム画面に <strong style="color:#e2e8f0">Station WakeUp</strong> が追加されます</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>4. 以前の仮アプリを入れている場合</h2>
+      <p>署名が新しくなったため、古い仮版が入っているときは一度削除してから入れてください。</p>
+      <ol>
+        <li>設定 → アプリ → Station WakeUp → アンインストール</li>
+        <li>このページから ZIP / APK を入れ直す</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>5. 使い方</h2>
+      <ol>
+        <li>ホーム画面の Station WakeUp を開く</li>
+        <li>初回はマイクを「許可」</li>
+        <li>駅名を入れて「監視を開始する」</li>
+      </ol>
+      <p>アプリ内は当初どおりのシンプルな画面です（Web向けの案内バナーは出ません）。</p>
+    </div>
+
+    <p class="note">予備リンク: <a href="https://nobu5129maki-crypto.github.io/station-wakeup/downloads/StationWakeUp-Official.zip" style="color:#93c5fd">GitHub Pages（ZIP）</a></p>
+    <p class="note"><a href="./index.html" style="color:#93c5fd">説明ページに戻る</a></p>
   </main>
-  <script>
-    // Android Chrome では同一オリジンの直接遷移が最も確実
-    document.getElementById('apkLink').addEventListener('click', function (e) {
-      // download 属性付きの通常遷移を優先（JS で邪魔しない）
-    });
-  </script>
 </body>
 </html>
