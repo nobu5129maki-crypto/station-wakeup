@@ -40,6 +40,9 @@ jobs:
       - name: Sync Capacitor Android
         run: npm run android:sync
 
+      - name: Ensure hosted APK is not bundled into the app
+        run: rm -rf android/app/src/main/assets/public/downloads
+
       - name: Build debug APK (sideload / 公式配布用)
         run: |
           cd android
@@ -48,10 +51,11 @@ jobs:
 
       - name: Prepare artifact
         run: |
-          mkdir -p dist downloads
+          mkdir -p dist downloads public/downloads
           cp android/app/build/outputs/apk/debug/app-debug.apk dist/station-wakeup.apk
           cp dist/station-wakeup.apk downloads/station-wakeup.apk
-          ls -lh dist/station-wakeup.apk downloads/station-wakeup.apk
+          cp dist/station-wakeup.apk public/downloads/station-wakeup.apk
+          ls -lh dist/station-wakeup.apk downloads/station-wakeup.apk public/downloads/station-wakeup.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -86,7 +90,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add downloads/station-wakeup.apk
+          git add downloads/station-wakeup.apk public/downloads/station-wakeup.apk
           if git diff --staged --quiet; then
             echo "APK unchanged"
           else

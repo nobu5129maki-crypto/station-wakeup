@@ -188,11 +188,20 @@
         const MAX_SAVED = 15;
 
         function getOfficialApkUrl() {
+            // Vercel(public/) と GitHub Pages(ルート) の両方で相対パスが解決される
             try {
                 return new URL('./downloads/station-wakeup.apk', window.location.href).href;
             } catch (e) {
                 return 'https://station-wakeup.vercel.app/downloads/station-wakeup.apk';
             }
+        }
+
+        function getOfficialApkFallbackUrls() {
+            return [
+                'https://station-wakeup.vercel.app/downloads/station-wakeup.apk',
+                'https://nobu5129maki-crypto.github.io/station-wakeup/downloads/station-wakeup.apk',
+                OFFICIAL_APK_FALLBACK_URL,
+            ];
         }
 
         function getOfficialDownloadPageUrl() {
@@ -508,7 +517,14 @@
                 direct.setAttribute('download', 'station-wakeup.apk');
                 actions.appendChild(direct);
                 actions.appendChild(makeOfficialLinkButton('ダウンロード専用ページ', getOfficialDownloadPageUrl()));
-                const gh = makeOfficialLinkButton('予備: GitHubから取得', OFFICIAL_APK_FALLBACK_URL);
+                const pages = makeOfficialLinkButton(
+                    '予備リンク（GitHub Pages）',
+                    'https://nobu5129maki-crypto.github.io/station-wakeup/downloads/station-wakeup.apk'
+                );
+                pages.removeAttribute('target');
+                pages.setAttribute('download', 'station-wakeup.apk');
+                actions.appendChild(pages);
+                const gh = makeOfficialLinkButton('予備: GitHub Releases', OFFICIAL_APK_FALLBACK_URL);
                 actions.appendChild(gh);
                 actions.appendChild(makeOfficialActionButton(
                     'インストール済みとして記憶する',
