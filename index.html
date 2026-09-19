@@ -71,6 +71,32 @@
             <div id="officialAppActions" class="mt-3 flex flex-col gap-2"></div>
         </div>
 
+        <!-- 公式アプリのみ：初回起動の全画面案内（ホーム画面に置く） -->
+        <div id="homeOnboard" class="hidden fixed inset-0 z-[60] bg-slate-950/95 backdrop-blur-sm overflow-y-auto">
+            <div class="min-h-full flex flex-col items-center justify-center px-6 py-10 text-center">
+                <img src="./icons/icon-192.png" width="96" height="96" alt="" class="rounded-[24px] shadow-[0_14px_40px_rgba(30,58,138,0.6)]">
+                <h2 class="mt-6 text-2xl font-bold text-white leading-snug">ホーム画面に<br>アイコンを置きましょう</h2>
+                <p id="homeOnboardHint" class="mt-3 text-sm text-slate-300 leading-relaxed max-w-xs">インストールしただけではホーム画面に出ない機種があります。<br>下のボタンを押して、出てきた確認で<strong class="text-white">「追加」</strong>を押してください。</p>
+                <button type="button" id="homeOnboardBtn" class="mt-8 w-full max-w-xs py-5 rounded-2xl bg-blue-500 hover:bg-blue-400 active:scale-[0.98] text-white text-xl font-bold shadow-xl transition-all">
+                    ホーム画面に追加する
+                </button>
+                <div id="homeOnboardManual" class="hidden mt-5 w-full max-w-xs rounded-2xl bg-slate-800/90 border border-slate-600 p-4 text-left text-sm text-slate-200 leading-relaxed">
+                    <p class="font-bold text-white mb-2">手で追加する方法</p>
+                    <ol class="list-decimal pl-5 space-y-1.5">
+                        <li>ホーム画面を上にスワイプして「アプリ一覧」を開く</li>
+                        <li>電車＋ベルのアイコン「Station WakeUp」を<strong class="text-white">長押し</strong></li>
+                        <li>「ホーム画面に追加」を選ぶ</li>
+                    </ol>
+                </div>
+                <button type="button" id="homeOnboardDone" class="mt-6 text-sm text-slate-300 underline underline-offset-4 hover:text-white">
+                    追加できた／もうホーム画面にある
+                </button>
+                <button type="button" id="homeOnboardLater" class="mt-3 text-xs text-slate-500 hover:text-slate-300">
+                    あとで（今はアプリを使う）
+                </button>
+            </div>
+        </div>
+
         <!-- 公式アプリのみ：ホーム画面にアイコンを出す（初回は目立たせる） -->
         <div id="homePinBanner" class="native-only rounded-2xl border-2 border-blue-400/70 bg-gradient-to-b from-blue-900/70 to-slate-900 px-5 py-5 shadow-[0_0_30px_rgba(59,130,246,0.25)]">
             <div class="flex items-start gap-3">
@@ -261,10 +287,94 @@
         }
 
         const HOME_PIN_DISMISSED_KEY = 'stationWakeUp_homePinDismissed';
+        const HOME_ONBOARD_LATER_KEY = 'stationWakeUp_homeOnboardLater';
+        const MANUAL_PIN_TEXT = 'アプリ一覧（ホーム画面を上にスワイプ）で Station WakeUp を長押し →「ホーム画面に追加」を選んでください。';
 
         function hideHomePinBanner() {
             const banner = document.getElementById('homePinBanner');
             if (banner) banner.style.display = 'none';
+        }
+
+        function setHomeOnboardVisible(visible) {
+            const el = document.getElementById('homeOnboard');
+            if (!el) return;
+            el.classList.toggle('hidden', !visible);
+            document.body.style.overflow = visible ? 'hidden' : '';
+        }
+
+        async function fetchHomePinStatus() {
+            const P = getHomeScreenPlugin();
+            if (!P || typeof P.getStatus !== 'function') return { supported: true, pinned: false, asked: false };
+            try {
+                const st = await P.getStatus();
+                return {
+                    supported: !(st && st.supported === false),
+                    pinned: !!(st && st.pinned),
+                    asked: !!(st && st.asked)
+                };
+            } catch (e) {
+                return { supported: true, pinned: false, asked: false };
+            }
+        }
+
+        async function markHomePinnedEverywhere() {
+            try { localStorage.setItem(HOME_PIN_DISMISSED_KEY, '1'); } catch (e) { /* ignore */ }
+            const plugin = getHomeScreenPlugin();
+            if (plugin && typeof plugin.markPinned === 'function') {
+                try { await plugin.markPinned(); } catch (e) { /* ignore */ }
+            }
+            hideHomePinBanner();
+            setHomeOnboardVisible(false);
+        }
+
+        /** ボタン押下 → ネイティブにピン留め依頼。戻り値は案内文 */
+        async function requestHomePinFromUi(button, hint, manualBox) {
+            const plugin = getHomeScreenPlugin();
+            if (!plugin || typeof plugin.pinToHome !== 'function') {
+                if (hint) hint.textContent = MANUAL_PIN_TEXT;
+                if (manualBox) manualBox.classList.remove('hidden');
+                return false;
+            }
+            const original = button.textContent;
+            button.disabled = true;
+            button.textContent = '確認を表示しています…';
+            try {
+                const res = await plugin.pinToHome();
+                const supported = !(res && res.supported === false);
+                if (hint) hint.textContent = (res && res.message) || '確認が出たら「追加」を押してください。';
+                if (!supported || !(res && res.requested)) {
+                    if (manualBox) manualBox.classList.remove('hidden');
+                    button.textContent = 'もう一度試す';
+                } else {
+                    button.textContent = '確認が出なければもう一度押す';
+                }
+                return !!(res && res.requested);
+            } catch (e) {
+                if (hint) hint.textContent = '自動追加できませんでした。' + MANUAL_PIN_TEXT;
+                if (manualBox) manualBox.classList.remove('hidden');
+                button.textContent = original;
+                return false;
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        /** ピン留めが確認できたら自動で案内を閉じる（追加ダイアログから戻ってきた時用） */
+        function watchHomePinCompletion() {
+            let tries = 0;
+            const check = async () => {
+                tries += 1;
+                const st = await fetchHomePinStatus();
+                if (st.pinned) {
+                    await markHomePinnedEverywhere();
+                    return;
+                }
+                if (tries < 12) setTimeout(check, 2500);
+            };
+            setTimeout(check, 2500);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') void check();
+            });
         }
 
         async function setupHomePinUi() {
@@ -272,69 +382,59 @@
             const btn = document.getElementById('homePinBtn');
             const doneBtn = document.getElementById('homePinDoneBtn');
             const hint = document.getElementById('homePinHint');
+            const onboard = document.getElementById('homeOnboard');
+            const onboardBtn = document.getElementById('homeOnboardBtn');
+            const onboardHint = document.getElementById('homeOnboardHint');
+            const onboardManual = document.getElementById('homeOnboardManual');
+            const onboardDone = document.getElementById('homeOnboardDone');
+            const onboardLater = document.getElementById('homeOnboardLater');
             if (!banner || !btn) return;
             if (!isCapacitorNative() || getRuntimePlatform() === 'ios-native') {
                 hideHomePinBanner();
+                setHomeOnboardVisible(false);
                 return;
             }
+
+            let dismissed = false;
+            let laterTapped = false;
             try {
-                if (localStorage.getItem(HOME_PIN_DISMISSED_KEY) === '1') {
-                    hideHomePinBanner();
-                    return;
-                }
+                dismissed = localStorage.getItem(HOME_PIN_DISMISSED_KEY) === '1';
+                laterTapped = localStorage.getItem(HOME_ONBOARD_LATER_KEY) === '1';
             } catch (e) { /* ignore */ }
 
-            const P = getHomeScreenPlugin();
-            let supported = true;
-            if (P && typeof P.getStatus === 'function') {
-                try {
-                    const st = await P.getStatus();
-                    if (st && st.pinned) {
-                        hideHomePinBanner();
-                        return;
-                    }
-                    supported = !(st && st.supported === false);
-                } catch (e) { /* ignore */ }
-            }
-            if (!supported && hint) {
-                hint.textContent = 'この端末では自動追加が使えません。アプリ一覧で Station WakeUp（電車＋ベルのアイコン）を長押し →「ホーム画面に追加」を選んでください。';
-                btn.textContent = 'やり方をもう一度見る';
+            const status = await fetchHomePinStatus();
+            if (dismissed || status.pinned) {
+                hideHomePinBanner();
+                setHomeOnboardVisible(false);
+                return;
             }
 
-            btn.addEventListener('click', async () => {
-                const plugin = getHomeScreenPlugin();
-                if (!plugin || typeof plugin.pinToHome !== 'function' || !supported) {
-                    if (hint) hint.textContent = 'アプリ一覧で Station WakeUp を長押し →「ホーム画面に追加」を選んでください。';
-                    return;
-                }
-                btn.disabled = true;
-                btn.textContent = '確認を表示しています…';
-                try {
-                    const res = await plugin.pinToHome();
-                    if (hint) hint.textContent = (res && res.message) || '確認が出たら「追加」を押してください。';
-                    if (res && res.requested) {
-                        btn.textContent = 'もう一度表示する';
-                    } else {
-                        btn.textContent = 'やり方をもう一度見る';
-                    }
-                } catch (e) {
-                    if (hint) hint.textContent = '自動追加できませんでした。アプリ一覧で長押し →「ホーム画面に追加」を選んでください。';
-                    btn.textContent = 'やり方をもう一度見る';
-                } finally {
-                    btn.disabled = false;
-                }
-            });
+            if (!status.supported) {
+                if (hint) hint.textContent = 'この端末では自動追加が使えません。' + MANUAL_PIN_TEXT;
+                if (onboardHint) onboardHint.textContent = 'この端末では自動追加が使えません。下の手順で追加してください。';
+                if (onboardManual) onboardManual.classList.remove('hidden');
+                if (onboardBtn) onboardBtn.textContent = 'それでも試してみる';
+            }
 
-            if (doneBtn) {
-                doneBtn.addEventListener('click', async () => {
-                    try { localStorage.setItem(HOME_PIN_DISMISSED_KEY, '1'); } catch (e) { /* ignore */ }
-                    const plugin = getHomeScreenPlugin();
-                    if (plugin && typeof plugin.markPinned === 'function') {
-                        try { await plugin.markPinned(); } catch (e) { /* ignore */ }
-                    }
-                    hideHomePinBanner();
+            // 初回（まだ「あとで」を押していない）は全画面で案内する
+            if (onboard && !laterTapped) {
+                setHomeOnboardVisible(true);
+            }
+
+            btn.addEventListener('click', () => { void requestHomePinFromUi(btn, hint, null); });
+            if (onboardBtn) {
+                onboardBtn.addEventListener('click', () => { void requestHomePinFromUi(onboardBtn, onboardHint, onboardManual); });
+            }
+            if (doneBtn) doneBtn.addEventListener('click', () => { void markHomePinnedEverywhere(); });
+            if (onboardDone) onboardDone.addEventListener('click', () => { void markHomePinnedEverywhere(); });
+            if (onboardLater) {
+                onboardLater.addEventListener('click', () => {
+                    try { localStorage.setItem(HOME_ONBOARD_LATER_KEY, '1'); } catch (e) { /* ignore */ }
+                    setHomeOnboardVisible(false);
                 });
             }
+
+            watchHomePinCompletion();
         }
 
         function getAlarmVolumePercent() {

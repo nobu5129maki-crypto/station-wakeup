@@ -8,8 +8,6 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import androidx.core.content.pm.ShortcutManagerCompat;
-
 @CapacitorPlugin(name = "HomeScreen")
 public class HomeScreenPlugin extends Plugin {
 
@@ -18,54 +16,61 @@ public class HomeScreenPlugin extends Plugin {
         return a instanceof MainActivity ? (MainActivity) a : null;
     }
 
-    private boolean isSupported() {
-        try {
-            return ShortcutManagerCompat.isRequestPinShortcutSupported(getContext());
-        } catch (Exception ignored) {
-            return false;
-        }
+    private void fillStatus(JSObject ret, MainActivity activity) {
+        ret.put("supported", activity != null && activity.isPinSupported());
+        ret.put("pinned", activity != null && activity.isHomePinned());
+        ret.put("asked", activity != null && activity.hasAskedHomePin());
     }
 
     @PluginMethod
     public void getStatus(PluginCall call) {
         MainActivity activity = mainActivity();
         JSObject ret = new JSObject();
-        ret.put("supported", isSupported());
-        ret.put("pinned", activity != null && activity.isHomePinned());
-        ret.put("asked", activity != null && activity.hasAskedHomePin());
-        call.resolve(ret);
+        if (activity == null) {
+            fillStatus(ret, null);
+            call.resolve(ret);
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            fillStatus(ret, activity);
+            call.resolve(ret);
+        });
     }
 
     @PluginMethod
     public void canPin(PluginCall call) {
+        MainActivity activity = mainActivity();
         JSObject ret = new JSObject();
-        ret.put("supported", isSupported());
+        ret.put("supported", activity != null && activity.isPinSupported());
         call.resolve(ret);
     }
 
     @PluginMethod
     public void pinToHome(PluginCall call) {
-        try {
-            MainActivity activity = mainActivity();
-            if (activity == null) {
-                call.reject("Activity unavailable");
-                return;
-            }
-            final boolean[] requested = new boolean[1];
-            activity.runOnUiThread(() -> {
-                requested[0] = activity.requestHomeScreenPin();
-                JSObject ret = new JSObject();
-                ret.put("requested", requested[0]);
-                if (!requested[0]) {
-                    ret.put("message", "この端末では自動追加に対応していません。アプリ一覧で Station WakeUp を長押し →「ホーム画面に追加」を選んでください。");
+        MainActivity activity = mainActivity();
+        if (activity == null) {
+            call.reject("Activity unavailable");
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            JSObject ret = new JSObject();
+            try {
+                boolean supported = activity.isPinSupported();
+                boolean requested = activity.requestHomeScreenPin();
+                ret.put("requested", requested);
+                ret.put("supported", supported);
+                if (requested && supported) {
+                    ret.put("message", "画面に「ホーム画面に追加」の確認が出ます。「追加」を押してください。");
+                } else if (requested) {
+                    ret.put("message", "ホーム画面に追加を依頼しました。出ない場合はアプリ一覧で Station WakeUp を長押し →「ホーム画面に追加」してください。");
                 } else {
-                    ret.put("message", "確認が出たら「追加」を押してください。ホーム画面に Station WakeUp が並びます。");
+                    ret.put("message", "この端末では自動追加できません。アプリ一覧で Station WakeUp を長押し →「ホーム画面に追加」してください。");
                 }
                 call.resolve(ret);
-            });
-        } catch (Exception e) {
-            call.reject("Failed to request home pin: " + e.getMessage(), e);
-        }
+            } catch (Exception e) {
+                call.reject("Failed to request home pin: " + e.getMessage(), e);
+            }
+        });
     }
 
     /** ユーザーが「もう追加した」と申告したときに保存する */
