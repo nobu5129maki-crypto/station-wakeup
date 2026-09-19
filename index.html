@@ -1293,6 +1293,7 @@
         /** 公式アプリ: ネイティブ音声認識のリスナー登録済みか */
         let nativeSpeechListenersReady = false;
         let nativeSpeechRestartTimer = null;
+        let nativeIdleStatusTimer = null;
         let usingNativeSpeech = false;
 
         function getStationSpeechPlugin() {
@@ -1360,6 +1361,7 @@
                 if (!isListening) return;
                 if (data && data.status === 'started') {
                     hadRecognitionOnStart = true;
+                    if (nativeIdleStatusTimer) { clearTimeout(nativeIdleStatusTimer); nativeIdleStatusTimer = null; }
                     systemMsg.textContent = '聞き取り中（公式アプリ）';
                     systemMsg.className = 'text-blue-400 font-sans';
                 } else if (data && data.status === 'stopped') {
@@ -1375,10 +1377,15 @@
                 if (!isListening) return;
                 const msg = (data && data.message) ? String(data.message) : '音声認識エラー';
                 const code = data && data.code;
-                // 無音・一致なしは通常動作（再開される）
+                // 無音・一致なしは通常動作（すぐ再開される）。表示が点滅しないよう、長引いた時だけ「待機」にする
                 if (code === 6 || code === 7 || /一致なし|音声入力がありません|No match|No speech/i.test(msg)) {
-                    systemMsg.textContent = '聞き取り中（待機）';
-                    systemMsg.className = 'text-blue-400 font-sans';
+                    if (nativeIdleStatusTimer) clearTimeout(nativeIdleStatusTimer);
+                    nativeIdleStatusTimer = setTimeout(() => {
+                        nativeIdleStatusTimer = null;
+                        if (!isListening) return;
+                        systemMsg.textContent = '聞き取り中（待機）';
+                        systemMsg.className = 'text-blue-400 font-sans';
+                    }, 3000);
                     return;
                 }
                 if (/権限|permission|マイク/i.test(msg)) {
@@ -1867,8 +1874,13 @@
             saveStation(station);
 
             const beginMonitor = () => {
-                // 公式アプリは音声出力の準備が不要（無音の出力が「音楽再生中」と誤判定されるのを避ける）
-                if (!isCapacitorNative()) primeAlarmAudioFromUserGesture();
+                // 公式アプリは音声出力の準備が不要。開いている出力があれば止める
+                // （無音でも出力が開いていると「音楽再生中」と判定され、消音が短時間モードになる）
+                if (!isCapacitorNative()) {
+                    primeAlarmAudioFromUserGesture();
+                } else if (alarmAudioCtx && alarmAudioCtx.state === 'running') {
+                    try { alarmAudioCtx.suspend().catch(() => {}); } catch (e) { /* ignore */ }
+                }
                 if (isVibrateEnabled()) {
                     void pulseAnyVibrate(20);
                 }

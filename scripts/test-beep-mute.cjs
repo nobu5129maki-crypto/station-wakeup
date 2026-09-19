@@ -72,8 +72,21 @@ must(
 );
 must(trigBody.includes('setTimeout(beginAlarmOutput'), '停止が遅れてもアラームは必ず鳴る');
 
-// 監視開始時に公式アプリでは無音の音声出力を作らない（音楽再生中と誤判定させない）
-must(html.includes('if (!isCapacitorNative()) primeAlarmAudioFromUserGesture();'), '公式アプリでは開始時に音声出力を準備しない');
+// 監視開始時に公式アプリでは無音の音声出力を作らない／開いていれば止める（音楽再生中と誤判定させない）
+must(/if \(!isCapacitorNative\(\)\) \{\s*primeAlarmAudioFromUserGesture\(\);/.test(html), '公式アプリでは開始時に音声出力を準備しない');
+must(html.includes("alarmAudioCtx.suspend()"), '公式アプリでは開始時に開いている音声出力を止める');
+
+// 開始音は onReadyForSpeech で鳴る → その直後にミュート継続と解除予約
+const readyIdx = java.indexOf('public void onReadyForSpeech(');
+const readyBody = java.slice(readyIdx, readyIdx + 400);
+must(readyBody.includes('muteBeepWindow();') && readyBody.includes('scheduleBeepWindowEnd(BEEP_WINDOW_MS)'), 'onReadyForSpeech（開始音）でミュートし、鳴り終わってから戻す');
+// 準備完了が来ない場合の保険（長すぎるミュートを防ぐ）
+must(java.includes('scheduleBeepWindowEnd(BEEP_WINDOW_FALLBACK_MS)'), '準備完了が来なくても一定時間で音量を戻す');
+// 再開回数を減らす（無音判定を長く）
+must(/COMPLETE_SILENCE_LENGTH_MILLIS, (4000|5000|6000)\)/.test(java), '無音判定を長くして再開回数を減らす');
+
+// 「待機」表示の点滅を抑える
+must(html.includes('nativeIdleStatusTimer = setTimeout('), '待機表示は長引いた時だけ出す');
 
 if (failed) {
   console.error('FAILED', failed);

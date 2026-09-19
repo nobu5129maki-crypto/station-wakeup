@@ -57,7 +57,10 @@ public class StationSpeechPlugin extends Plugin {
     private boolean sessionMuted = false;
     private boolean windowMuted = false;
     private boolean useSessionMute = false;
-    private static final long BEEP_WINDOW_MS = 900L;
+    /** 開始音は onReadyForSpeech の時点で鳴る。準備完了後この時間は黙らせる */
+    private static final long BEEP_WINDOW_MS = 800L;
+    /** onReadyForSpeech が来ない場合の保険（ここまで待って戻す） */
+    private static final long BEEP_WINDOW_FALLBACK_MS = 5000L;
     private static final int[] BEEP_STREAMS = {
         AudioManager.STREAM_MUSIC,
         AudioManager.STREAM_SYSTEM
@@ -116,12 +119,12 @@ public class StationSpeechPlugin extends Plugin {
         }
     }
 
-    private void scheduleBeepWindowEnd() {
+    private void scheduleBeepWindowEnd(long delayMs) {
         if (sessionMuted) {
             return;
         }
         mainHandler.removeCallbacks(unmuteWindowRunnable);
-        mainHandler.postDelayed(unmuteWindowRunnable, BEEP_WINDOW_MS);
+        mainHandler.postDelayed(unmuteWindowRunnable, delayMs);
     }
 
     private void unmuteBeepWindow() {
@@ -255,6 +258,9 @@ public class StationSpeechPlugin extends Plugin {
             @Override
             public void onReadyForSpeech(Bundle params) {
                 isStarting = false;
+                // ここで開始音が鳴る。鳴り終わるまで黙らせてから戻す
+                muteBeepWindow();
+                scheduleBeepWindowEnd(BEEP_WINDOW_MS);
                 notifyListeningState("started");
             }
 
@@ -351,17 +357,17 @@ public class StationSpeechPlugin extends Plugin {
             intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
             intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, maxResults);
             intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
-            // 車内アナウンス向けに無音判定を少し長めに
-            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500);
-            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500);
-            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1200);
+            // 無音判定を長めにして再開（＝開始/終了音）の回数を減らす。判定は途中結果で行う
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000);
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 4000);
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 3000);
             intent.putExtra("android.speech.extra.DICTATION_MODE", true);
 
             isStarting = true;
-            // 開始音の直前にミュートし、鳴り終わる頃に戻す（音楽再生中のみ短時間）
+            // 開始前からミュート。onReadyForSpeech（開始音）後に戻す。来なければ保険時間で戻す
             muteBeepWindow();
             speechRecognizer.startListening(intent);
-            scheduleBeepWindowEnd();
+            scheduleBeepWindowEnd(BEEP_WINDOW_FALLBACK_MS);
         } catch (Exception e) {
             isStarting = false;
             unmuteBeepWindow();
