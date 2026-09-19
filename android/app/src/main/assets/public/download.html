@@ -2,98 +2,175 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Station WakeUp 公式アプリの入れ方</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>Station WakeUp をスマホに入れる</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <style>
     :root { color-scheme: dark; }
-    body { font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
-    main { max-width: 28rem; margin: 32px auto 48px; }
-    h1 { color: #60a5fa; font-size: 1.45rem; margin: 0 0 8px; }
-    .lead { color: #94a3b8; line-height: 1.7; font-size: 0.95rem; margin: 0 0 18px; }
-    .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 16px; margin: 14px 0; }
-    .card h2 { margin: 0 0 8px; font-size: 1rem; color: #f8fafc; }
-    .card p, .card li { color: #94a3b8; font-size: 0.88rem; line-height: 1.65; }
-    .card ol { margin: 8px 0 0; padding-left: 1.2rem; }
-    .trust { background: #052e1b; border-color: #166534; }
-    .trust p { color: #bbf7d0; }
-    a.btn {
-      display: block; text-align: center; margin-top: 10px; padding: 15px 16px;
-      background: #2563eb; color: #fff; text-decoration: none; border-radius: 12px; font-weight: 700;
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Hiragino Sans", "Noto Sans JP", system-ui, -apple-system, sans-serif;
+      background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px 18px 56px;
+      -webkit-font-smoothing: antialiased;
     }
-    a.btn.secondary { background: transparent; border: 1px solid #475569; color: #e2e8f0; font-weight: 600; }
-    a.btn:active { transform: scale(0.98); }
-    .note { margin-top: 14px; font-size: 0.8rem; color: #64748b; line-height: 1.6; }
-    .ok { color: #86efac; font-weight: 700; }
+    main { max-width: 27rem; margin: 0 auto; }
+
+    .hero { text-align: center; padding: 10px 0 6px; }
+    .hero img { width: 84px; height: 84px; border-radius: 22px; box-shadow: 0 10px 30px rgba(30,58,138,.55); }
+    .hero h1 { font-size: 1.45rem; margin: 14px 0 6px; color: #f8fafc; letter-spacing: .01em; }
+    .hero p { margin: 0; color: #94a3b8; font-size: .95rem; line-height: 1.7; }
+
+    .cta {
+      display: block; width: 100%; margin: 20px 0 8px; padding: 18px 16px;
+      background: linear-gradient(180deg, #3b82f6, #2563eb); color: #fff; text-decoration: none;
+      border-radius: 16px; font-weight: 800; font-size: 1.15rem; text-align: center;
+      box-shadow: 0 12px 28px rgba(37,99,235,.35); border: 0;
+    }
+    .cta small { display: block; font-weight: 500; font-size: .8rem; opacity: .9; margin-top: 4px; }
+    .cta:active { transform: scale(.985); }
+    .safe { text-align: center; color: #86efac; font-size: .82rem; margin: 0 0 22px; }
+
+    .steps { display: flex; flex-direction: column; gap: 12px; }
+    .step {
+      display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: start;
+      background: #1e293b; border: 1px solid #334155; border-radius: 18px; padding: 16px 14px;
+    }
+    .num {
+      width: 44px; height: 44px; border-radius: 14px; background: #1e3a8a; color: #fff;
+      font-weight: 800; font-size: 1.25rem; display: flex; align-items: center; justify-content: center;
+    }
+    .step h2 { margin: 2px 0 6px; font-size: 1.05rem; color: #f8fafc; }
+    .step p { margin: 0; color: #cbd5e1; font-size: .92rem; line-height: 1.7; }
+    .step .tap { display: inline-block; background: #0f172a; border: 1px solid #475569; border-radius: 8px; padding: 1px 8px; color: #fff; font-weight: 700; margin: 0 2px; }
+    .step .calm { color: #94a3b8; font-size: .82rem; margin-top: 8px; line-height: 1.6; }
+
+    .done {
+      margin: 18px 0 8px; background: #052e1b; border: 1px solid #166534; border-radius: 18px; padding: 16px;
+      display: flex; gap: 12px; align-items: center;
+    }
+    .done .ico { font-size: 1.7rem; }
+    .done p { margin: 0; color: #bbf7d0; font-size: .92rem; line-height: 1.65; }
+
+    details { background: #0b1220; border: 1px solid #1f2a44; border-radius: 14px; margin-top: 12px; }
+    summary { list-style: none; cursor: pointer; padding: 14px 16px; font-weight: 700; color: #e2e8f0; font-size: .95rem; display: flex; justify-content: space-between; align-items: center; }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "＋"; color: #64748b; }
+    details[open] summary::after { content: "－"; }
+    .body { padding: 0 16px 16px; color: #cbd5e1; font-size: .9rem; line-height: 1.75; }
+    .body ol { margin: 6px 0 0; padding-left: 1.2rem; }
+    .body a { color: #93c5fd; }
+    .sub { display: block; margin-top: 10px; text-align: center; padding: 12px; border: 1px solid #475569; border-radius: 12px; color: #e2e8f0; text-decoration: none; font-weight: 600; font-size: .92rem; }
+    .foot { margin-top: 26px; text-align: center; font-size: .82rem; color: #64748b; }
+    .foot a { color: #93c5fd; }
   </style>
 </head>
 <body>
   <main>
-    <h1>Station WakeUp 公式アプリ</h1>
-    <p class="lead">有料ノート購入者向けの公式アプリです。デザインは当初の画面のまま、本体バイブと駅名の聞き取りに対応しています。</p>
+    <section class="hero">
+      <img src="./icon.svg" alt="Station WakeUp のアイコン（青い背景に電車とベル）">
+      <h1>Station WakeUp をスマホに入れる</h1>
+      <p>やることは3つだけ。<br>「入れる」→「開く」→「ホームに追加」です。</p>
+    </section>
 
-    <div class="card trust">
-      <h2><span class="ok">安心ポイント</span></h2>
-      <p>このファイルは Station WakeUp の公式配布です。ウイルスではありません。Playストア外のアプリでは、Android が確認画面を出すことがあります（標準の保護機能です）。</p>
+    <a class="cta" id="installBtn" href="./downloads/StationWakeUp-Official.apk" download="StationWakeUp-Official.apk">
+      アプリを入れる
+      <small>タップするとダウンロードが始まります（約3MB）</small>
+    </a>
+    <p class="safe">✓ 有料ノート購入者向けの公式アプリです（ウイルスではありません）</p>
+
+    <div class="steps">
+      <article class="step">
+        <div class="num">1</div>
+        <div>
+          <h2>ダウンロードする</h2>
+          <p>上の青いボタンを押します。「このファイルは…」と出たら <span class="tap">ダウンロード</span> または <span class="tap">OK</span>。</p>
+          <p class="calm">「有害なファイルの可能性」と出ても、ストア外アプリ共通の確認です。<span class="tap">詳細</span> →「ダウンロードを続行」で進めます。</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="num">2</div>
+        <div>
+          <h2>開いてインストール</h2>
+          <p>画面上の通知にある <span class="tap">開く</span> を押し、<span class="tap">インストール</span> を押します。</p>
+          <p class="calm">「デバイスを保護するためブロック」と出たら <span class="tap">詳細</span> →「インストールする」。初回だけ「この提供元を許可」を ON にする場合があります。</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="num">3</div>
+        <div>
+          <h2>ホーム画面に追加</h2>
+          <p>インストール後に <span class="tap">開く</span>。アプリの中で <span class="tap">ホーム画面に追加する</span> を押し、確認で <span class="tap">追加</span>。</p>
+          <p class="calm">これで青い電車＋ベルのアイコンがホーム画面に並びます。以後はそこから起動してください。</p>
+        </div>
+      </article>
     </div>
 
-    <div class="card">
-      <h2>1. 公式アプリを入手</h2>
-      <p>まずは ZIP（おすすめ）です。Chrome の警告が出にくい形式です。</p>
-      <a class="btn" href="./downloads/StationWakeUp-Official.zip" download="StationWakeUp-Official.zip">公式アプリ（ZIP）をダウンロード</a>
-      <a class="btn secondary" href="./downloads/StationWakeUp-Official.apk" download="StationWakeUp-Official.apk">APKを直接ダウンロード</a>
+    <div class="done">
+      <div class="ico">🎉</div>
+      <p>完了です。初回はマイクを「許可」し、駅名を入れて「監視を開始する」を押すだけです。</p>
     </div>
 
-    <div class="card">
-      <h2>2. 「有害なファイルの可能性」と出たら</h2>
-      <p>Chrome が Playストア外のアプリに出す一般的な案内です。</p>
-      <ol>
-        <li>「詳細」をタップ</li>
-        <li>「サイトを信頼してダウンロード」または「ダウンロードを続行」をタップ</li>
-      </ol>
-    </div>
+    <details>
+      <summary>ホーム画面にアイコンが見当たらない</summary>
+      <div class="body">
+        <ol>
+          <li>ホーム画面を上にスワイプして「アプリ一覧」を開く</li>
+          <li>青い背景に電車＋ベルの「Station WakeUp」を探す</li>
+          <li>アイコンを<strong>長押し</strong> →「ホーム画面に追加」</li>
+        </ol>
+        <p>アプリを開いて「ホーム画面に追加する」ボタンを押しても追加できます。<br>
+        機種の設定で「新しいアプリのアイコンをホームに追加」がOFFだと自動では並びません。ホーム画面の設定でONにすると次回から自動になります。</p>
+      </div>
+    </details>
 
-    <div class="card">
-      <h2>3. 「デバイスを保護するためブロック」と出たら</h2>
-      <p>Play プロテクトの確認画面です。危険という断定ではなく「ストア外です」という注意です。</p>
-      <ol>
-        <li>「詳細情報」をタップ</li>
-        <li>「インストール anyway」または「それでもインストール」をタップ</li>
-        <li>完了後「開く」をタップ（初回起動でホーム追加の確認が出ます）</li>
-      </ol>
-    </div>
+    <details>
+      <summary>「ブロックしました」「有害」と出て不安</summary>
+      <div class="body">
+        <p>Google Play 以外から入れるアプリには、Android が必ず同じ確認を出します。危険と判定された意味ではありません。</p>
+        <ol>
+          <li>「詳細」または「詳細情報」を押す</li>
+          <li>「ダウンロードを続行」または「インストールする」を押す</li>
+        </ol>
+      </div>
+    </details>
 
-    <div class="card">
-      <h2>4. ホーム画面に見当たらないとき</h2>
-      <p>機種によっては、インストール直後はホームではなく<strong style="color:#e2e8f0">アプリ一覧</strong>にだけ入ります。</p>
-      <ol>
-        <li>アプリ一覧（ドロワー）で「Station WakeUp」を探す</li>
-        <li>アイコンは当初デザイン（青い背景に電車＋ベル）です</li>
-        <li>見つからない場合は設定 → アプリ → Station WakeUp → 開く</li>
-        <li>アプリ内の「ホーム画面に追加する」をタップ</li>
-      </ol>
-    </div>
+    <details>
+      <summary>以前のアプリが入っている / うまく入らない</summary>
+      <div class="body">
+        <p>古い版が残っていると失敗することがあります。</p>
+        <ol>
+          <li>設定 → アプリ → Station WakeUp → アンインストール</li>
+          <li>もう一度このページの「アプリを入れる」を押す</li>
+        </ol>
+        <p>ダウンロード自体が止まる場合は、圧縮版をお試しください。</p>
+        <a class="sub" href="./downloads/StationWakeUp-Official.zip" download="StationWakeUp-Official.zip">圧縮版でダウンロードする</a>
+        <p style="margin-top:8px;font-size:.82rem;color:#94a3b8;">圧縮版は「ファイル」アプリで開き、中の StationWakeUp-Official をタップするとインストールできます。</p>
+      </div>
+    </details>
 
-    <div class="card">
-      <h2>5. 以前の仮アプリを入れている場合</h2>
-      <p>署名が新しくなったため、古い仮版が入っているときは一度削除してから入れてください。</p>
-      <ol>
-        <li>設定 → アプリ → Station WakeUp → アンインストール</li>
-        <li>このページから ZIP / APK を入れ直す</li>
-      </ol>
-    </div>
-
-    <div class="card">
-      <h2>6. 使い方</h2>
-      <ol>
-        <li>Station WakeUp を開く</li>
-        <li>初回はマイクを「許可」</li>
-        <li>駅名を入れて「監視を開始する」</li>
-      </ol>
-      <p>アプリ内は当初どおりのシンプルな画面です。ホームに無い場合はアプリ内ボタンで追加できます。</p>
-    </div>
-
-    <p class="note">予備リンク: <a href="https://nobu5129maki-crypto.github.io/station-wakeup/downloads/StationWakeUp-Official.zip" style="color:#93c5fd">GitHub Pages（ZIP）</a></p>
-    <p class="note"><a href="./index.html" style="color:#93c5fd">説明ページに戻る</a></p>
+    <p class="foot">
+      <a href="./index.html">ブラウザ版に戻る</a>　|　
+      <a href="https://nobu5129maki-crypto.github.io/station-wakeup/download.html">予備ページ</a>
+    </p>
   </main>
+
+  <script>
+    // ダウンロード開始後に、次にやることを画面上部へ表示する
+    (function () {
+      var btn = document.getElementById('installBtn');
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        setTimeout(function () {
+          btn.textContent = 'ダウンロード中… 次は通知の「開く」';
+          var small = document.createElement('small');
+          small.textContent = '終わったら画面上の通知をタップしてください';
+          btn.appendChild(small);
+        }, 300);
+      });
+    })();
+  </script>
 </body>
 </html>

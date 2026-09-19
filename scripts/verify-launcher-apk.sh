@@ -13,7 +13,7 @@ printf '%s\n' "$BADGING" | grep -E 'package:|application:|launchable-activity:' 
 
 [[ "$BADGING" == *"launchable-activity: name='jp.stationwakeup.app.MainActivity'"* ]]
 [[ "$BADGING" == *"application-label:'Station WakeUp'"* ]]
-[[ "$BADGING" == *"versionCode='8'"* ]]
+[[ "$BADGING" == *"versionCode='9'"* ]]
 
 RESOURCES=$("$AAPT" dump resources "$APK")
 [[ "$RESOURCES" == *'color/ic_launcher_background: t=0x1d d=0xff1e3a8a'* ]]
@@ -56,6 +56,6 @@ PY
 DEX_STRINGS=$(unzip -p "$APK" classes.dex | strings || true)
 [[ "$DEX_STRINGS" == *'HomeScreenPlugin'* ]]
 [[ "$DEX_STRINGS" == *'requestPinShortcut'* ]]
-[[ "$DEX_STRINGS" == *'asked_home_pin_v1'* ]]
+[[ "$DEX_STRINGS" == *'asked_home_pin_v2'* ]]
 echo 'HOME_PIN_CODE_OK'
 echo 'APK_LAUNCHER_OK'

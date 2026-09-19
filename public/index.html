@@ -69,11 +69,21 @@
             <div id="officialAppActions" class="mt-3 flex flex-col gap-2"></div>
         </div>
 
-        <!-- 公式アプリのみ：ホーム画面に見つからないときの追加ボタン -->
-        <div id="homePinBanner" class="native-only rounded-xl border border-blue-500/40 bg-blue-950/40 px-4 py-3 text-sm leading-snug">
-            <p class="font-semibold text-blue-100">ホーム画面にアイコンを出す</p>
-            <p id="homePinHint" class="text-[11px] text-blue-100/70 mt-1 leading-relaxed">インストール後、端末によってはアプリ一覧にだけ入ります。下のボタンでホーム画面へ追加できます。</p>
-            <button type="button" id="homePinBtn" class="mt-3 w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors">ホーム画面に追加する</button>
+        <!-- 公式アプリのみ：ホーム画面にアイコンを出す（初回は目立たせる） -->
+        <div id="homePinBanner" class="native-only rounded-2xl border-2 border-blue-400/70 bg-gradient-to-b from-blue-900/70 to-slate-900 px-5 py-5 shadow-[0_0_30px_rgba(59,130,246,0.25)]">
+            <div class="flex items-start gap-3">
+                <div class="shrink-0 w-12 h-12 rounded-xl bg-[#1e3a8a] flex items-center justify-center text-2xl" aria-hidden="true">🚆</div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-base font-bold text-white leading-snug">ホーム画面にこのアプリを置きましょう</p>
+                    <p id="homePinHint" class="text-[12px] text-blue-100/80 mt-1 leading-relaxed">次回からワンタップで開けます。下のボタンを押し、出てきた確認で「追加」を押すだけです。</p>
+                </div>
+            </div>
+            <button type="button" id="homePinBtn" class="mt-4 w-full py-4 rounded-xl bg-blue-500 hover:bg-blue-400 active:scale-[0.99] text-white text-lg font-bold transition-all shadow-lg">
+                ホーム画面に追加する
+            </button>
+            <button type="button" id="homePinDoneBtn" class="mt-2 w-full py-2.5 rounded-lg text-sm text-blue-200/80 hover:text-white underline underline-offset-2">
+                もうホーム画面にあります（この案内を閉じる）
+            </button>
         </div>
 
         <!-- Status（通常は一行。問題時のみ開き方を展開） -->
@@ -181,7 +191,7 @@
             <ul id="footerList" class="list-disc pl-5 space-y-1.5 text-slate-400 max-w-md mx-auto">
                 <li>まず <strong class="text-slate-300">マナーモードをオフ</strong>、端末とアプリの <strong class="text-slate-300">音量・通知をオン</strong>にしてください。</li>
                 <li>検知すると <strong class="text-slate-300">大きな表示・赤い背景の点滅・アラーム音</strong>で知らせます。</li>
-                <li class="web-only">確実な本体バイブには <a class="text-blue-300 underline" href="./download.html">公式アプリの入れ方</a> をご利用ください（Androidの確認画面は標準の保護機能です）。</li>
+                <li class="web-only">確実な本体バイブには <a class="text-blue-300 underline" href="./download.html">スマホアプリの入れ方（3ステップ）</a> をご覧ください。</li>
             </ul>
             <p class="web-only text-center text-[11px] text-slate-600">開き方の注意: <code class="font-mono text-slate-500">https</code> または <code class="font-mono text-slate-500">localhost</code>。スマホだけで PC の LAN アドレス（例: 192.168…）だとマイクが使えないことがあります。</p>
         </footer>
@@ -201,7 +211,7 @@
         const VIBRATE_ENABLED_KEY = 'stationWakeUp_vibrateEnabled';
         const OFFICIAL_APP_PREF_KEY = 'stationWakeUp_preferOfficialApp';
         const OFFICIAL_APP_MARKED_KEY = 'stationWakeUp_markedOfficialInstalled';
-        /** スマホで確実に落とすため、同サイト直配信を優先（ZIP推奨：Chrome警告が出にくい） */
+        /** スマホで確実に落とすため、同サイト直配信を優先（アプリ本体を直接ダウンロード） */
         const OFFICIAL_APK_FALLBACK_URL = 'https://github.com/nobu5129maki-crypto/station-wakeup/releases/download/android-latest/StationWakeUp-Official.apk';
         const OFFICIAL_RELEASE_URL = 'https://github.com/nobu5129maki-crypto/station-wakeup/releases/tag/android-latest';
         const OFFICIAL_APP_SCHEME = 'stationwakeup://open';
@@ -248,39 +258,81 @@
             return getCapacitorPlugin('HomeScreen');
         }
 
+        const HOME_PIN_DISMISSED_KEY = 'stationWakeUp_homePinDismissed';
+
+        function hideHomePinBanner() {
+            const banner = document.getElementById('homePinBanner');
+            if (banner) banner.style.display = 'none';
+        }
+
         async function setupHomePinUi() {
             const banner = document.getElementById('homePinBanner');
             const btn = document.getElementById('homePinBtn');
+            const doneBtn = document.getElementById('homePinDoneBtn');
             const hint = document.getElementById('homePinHint');
             if (!banner || !btn) return;
-            if (!isCapacitorNative()) {
-                banner.style.display = 'none';
+            if (!isCapacitorNative() || getRuntimePlatform() === 'ios-native') {
+                hideHomePinBanner();
                 return;
             }
-            const P = getHomeScreenPlugin();
-            if (P && typeof P.canPin === 'function') {
-                try {
-                    const res = await P.canPin();
-                    if (res && res.supported === false) {
-                        if (hint) {
-                            hint.textContent = 'アプリ一覧で「Station WakeUp」（当初デザインのアイコン（電車＋ベル））を長押しし、「ホーム画面に追加」を選んでください。';
-                        }
-                    }
-                } catch (e) { /* ignore */ }
-            }
-            btn.addEventListener('click', async () => {
-                const plugin = getHomeScreenPlugin();
-                if (!plugin || typeof plugin.pinToHome !== 'function') {
-                    if (hint) hint.textContent = 'アプリ一覧から Station WakeUp を長押ししてホームに追加してください。';
+            try {
+                if (localStorage.getItem(HOME_PIN_DISMISSED_KEY) === '1') {
+                    hideHomePinBanner();
                     return;
                 }
+            } catch (e) { /* ignore */ }
+
+            const P = getHomeScreenPlugin();
+            let supported = true;
+            if (P && typeof P.getStatus === 'function') {
+                try {
+                    const st = await P.getStatus();
+                    if (st && st.pinned) {
+                        hideHomePinBanner();
+                        return;
+                    }
+                    supported = !(st && st.supported === false);
+                } catch (e) { /* ignore */ }
+            }
+            if (!supported && hint) {
+                hint.textContent = 'この端末では自動追加が使えません。アプリ一覧で Station WakeUp（電車＋ベルのアイコン）を長押し →「ホーム画面に追加」を選んでください。';
+                btn.textContent = 'やり方をもう一度見る';
+            }
+
+            btn.addEventListener('click', async () => {
+                const plugin = getHomeScreenPlugin();
+                if (!plugin || typeof plugin.pinToHome !== 'function' || !supported) {
+                    if (hint) hint.textContent = 'アプリ一覧で Station WakeUp を長押し →「ホーム画面に追加」を選んでください。';
+                    return;
+                }
+                btn.disabled = true;
+                btn.textContent = '確認を表示しています…';
                 try {
                     const res = await plugin.pinToHome();
-                    if (hint) hint.textContent = (res && res.message) || 'ホーム画面への追加確認が出たら「追加」をタップしてください。';
+                    if (hint) hint.textContent = (res && res.message) || '確認が出たら「追加」を押してください。';
+                    if (res && res.requested) {
+                        btn.textContent = 'もう一度表示する';
+                    } else {
+                        btn.textContent = 'やり方をもう一度見る';
+                    }
                 } catch (e) {
-                    if (hint) hint.textContent = '追加に失敗しました。アプリ一覧から長押しでホームに追加してください。';
+                    if (hint) hint.textContent = '自動追加できませんでした。アプリ一覧で長押し →「ホーム画面に追加」を選んでください。';
+                    btn.textContent = 'やり方をもう一度見る';
+                } finally {
+                    btn.disabled = false;
                 }
             });
+
+            if (doneBtn) {
+                doneBtn.addEventListener('click', async () => {
+                    try { localStorage.setItem(HOME_PIN_DISMISSED_KEY, '1'); } catch (e) { /* ignore */ }
+                    const plugin = getHomeScreenPlugin();
+                    if (plugin && typeof plugin.markPinned === 'function') {
+                        try { await plugin.markPinned(); } catch (e) { /* ignore */ }
+                    }
+                    hideHomePinBanner();
+                });
+            }
         }
 
         function getAlarmVolumePercent() {
@@ -480,21 +532,21 @@
         function downloadOfficialApk() {
             markOfficialInstalled();
             setPreferOfficialApp(true);
-            // ZIP を優先（Chrome の「有害なファイル」警告が出にくい）
-            const url = getOfficialZipUrl();
-            showOfficialAppToast('公式アプリ（ZIP）をダウンロードします。Androidの確認画面は標準の保護機能で、危険という意味ではありません。');
+            // 手順を最短にするため、アプリ本体を直接ダウンロードする
+            const url = getOfficialApkUrl();
+            showOfficialAppToast('アプリをダウンロードします。「ダウンロード」や「OK」が出たら押してください（公式ファイルです）。');
             updateOfficialAppUI();
             try {
                 const a = document.createElement('a');
                 a.href = url;
-                a.setAttribute('download', 'StationWakeUp-Official.zip');
+                a.setAttribute('download', 'StationWakeUp-Official.apk');
                 a.rel = 'noopener';
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
             } catch (e) { /* ignore */ }
             setTimeout(() => {
-                showOfficialAppToast('確認画面が出たら「詳細」→「ダウンロードを続行 / それでもインストール」でOKです（有料ノート公式です）。');
+                showOfficialAppToast('ダウンロードが終わったら通知の「開く」→「インストール」。終わったら「開く」でホーム画面に追加できます。');
             }, 1800);
         }
 
@@ -552,7 +604,7 @@
                 banner.className = 'rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-sm leading-snug';
                 titleEl.textContent = 'ブラウザのホーム画面ショートカットです';
                 titleEl.className = 'font-semibold text-amber-100';
-                hint.textContent = '公式アプリではありません。本体バイブを使う場合は下の「公式アプリの入れ方」へ進んでください。';
+                hint.textContent = 'これはブラウザのショートカットです。本体バイブを使うには下の「アプリの入れ方」からアプリ版を入れてください。';
                 hint.className = 'text-[11px] text-amber-100/70 mt-1 leading-relaxed';
             } else {
                 banner.className = 'rounded-xl border border-slate-600 bg-slate-800/80 px-4 py-3 text-sm leading-snug';
@@ -566,28 +618,28 @@
 
             if (plat === 'android-web' || (plat === 'other-web' && /Android/i.test(navigator.userAgent || ''))) {
                 titleEl.textContent = hasMarkedOfficialInstalled() || prefersOfficialApp()
-                    ? '公式アプリでご利用ください'
-                    : '公式アプリの入れ方（おすすめ）';
-                hint.textContent = '有料ノート公式です。Androidの確認画面は標準の保護機能で、危険という意味ではありません。';
+                    ? 'アプリ版で開くとバイブが確実です'
+                    : 'スマホにアプリを入れる（おすすめ）';
+                hint.textContent = 'アプリ版なら本体がしっかり振動します。手順は「入れる → 開く → ホームに追加」の3つだけです。';
                 if (hasMarkedOfficialInstalled() || prefersOfficialApp()) {
-                    actions.appendChild(makeOfficialActionButton('公式アプリで開く', () => openOfficialAndroidApp()));
+                    actions.appendChild(makeOfficialActionButton('アプリで開く', () => openOfficialAndroidApp()));
                 }
-                actions.appendChild(makeOfficialActionButton(
-                    '公式アプリ（ZIP）を入手',
-                    () => downloadOfficialApk(),
-                    'w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors'
+                actions.appendChild(makeOfficialLinkButton(
+                    'アプリの入れ方（3ステップ）',
+                    getOfficialDownloadPageUrl(),
+                    'block w-full text-center py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors'
                 ));
-                actions.appendChild(makeOfficialLinkButton('入れ方・確認画面の見方', getOfficialDownloadPageUrl()));
-                const direct = makeOfficialLinkButton('APK直接リンク', getOfficialApkUrl());
-                direct.removeAttribute('target');
-                direct.setAttribute('download', 'StationWakeUp-Official.apk');
-                actions.appendChild(direct);
                 actions.appendChild(makeOfficialActionButton(
-                    'インストール済みとして記憶する',
+                    'すぐダウンロードする',
+                    () => downloadOfficialApk(),
+                    'w-full py-2.5 rounded-lg border border-slate-600 text-slate-200 text-sm font-medium hover:bg-slate-700/70 transition-colors'
+                ));
+                actions.appendChild(makeOfficialActionButton(
+                    'すでにアプリを入れています',
                     () => {
                         markOfficialInstalled();
                         updateOfficialAppUI();
-                        showOfficialAppToast('記憶しました。次回は「公式アプリで開く」を表示します。');
+                        showOfficialAppToast('わかりました。次回から「アプリで開く」ボタンを表示します。');
                     },
                     'w-full py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 underline underline-offset-2'
                 ));
@@ -607,8 +659,7 @@
                     'w-full py-2.5 rounded-lg border border-slate-600 text-slate-200 text-sm font-medium hover:bg-slate-700/70 transition-colors'
                 ));
             } else {
-                actions.appendChild(makeOfficialLinkButton('公式アプリ（ZIP）', getOfficialZipUrl()));
-                actions.appendChild(makeOfficialLinkButton('入れ方ページ', getOfficialDownloadPageUrl()));
+                actions.appendChild(makeOfficialLinkButton('スマホアプリの入れ方', getOfficialDownloadPageUrl()));
             }
         }
 
@@ -678,7 +729,7 @@
                 return {
                     mode: 'web-vibrate',
                     label: 'ブラウザ振動（機種により弱い）',
-                    hint: 'Chrome 等のブラウザ振動を使います。効かない場合は Android 公式アプリ（APK）を使うと確実です。',
+                    hint: 'Chrome 等のブラウザ振動を使います。効かない場合はスマホアプリ版を入れると確実です。',
                     reliable: false,
                 };
             }
