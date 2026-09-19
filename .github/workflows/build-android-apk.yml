@@ -33,6 +33,9 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # 古い `tools` パッケージは廃止済みのため明示指定
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
 
       - name: Install dependencies
         run: npm ci
@@ -73,7 +76,7 @@ jobs:
             '2. APKを開く' \
             '3. 「詳細」→「それでもインストール」で進める' \
             '4. 「開く」→ ホーム追加の確認が出たら「追加」' \
-            '5. 見当たらないときはアプリ一覧の青い電車アイコン「Station WakeUp」' \
+            '5. 見当たらないときはアプリ一覧の当初アイコン（電車＋ベル）「Station WakeUp」' \
             '6. アプリ内の「ホーム画面に追加する」でも追加できます' \
             > dist/はじめにお読みください.txt
           (cd dist && zip -9 StationWakeUp-Official.zip StationWakeUp-Official.apk はじめにお読みください.txt)
