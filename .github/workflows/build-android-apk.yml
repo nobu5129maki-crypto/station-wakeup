@@ -63,23 +63,9 @@ jobs:
           # 旧ファイル名互換
           cp "$SRC" downloads/station-wakeup.apk
           cp "$SRC" public/downloads/station-wakeup.apk
-          # ZIP（Chromeの警告が出にくい配布用）
-            printf '%s\n' \
-            'Station WakeUp 公式アプリ' \
-            '' \
-            'このZIPは有料ノート購入者向けの公式配布です。' \
-            'Androidの確認画面（保護のためブロック等）は、Playストア外アプリへの標準的な案内です。' \
-            '危険なウイルスという意味ではありません。' \
-            '' \
-            '手順:' \
-            '1. ZIPを開き StationWakeUp-Official.apk を取り出す' \
-            '2. APKを開く' \
-            '3. 「詳細」→「それでもインストール」で進める' \
-            '4. 「開く」→ ホーム追加の確認が出たら「追加」' \
-            '5. 見当たらないときはアプリ一覧の当初アイコン（電車＋ベル）「Station WakeUp」' \
-            '6. アプリ内の「ホーム画面に追加する」でも追加できます' \
-            > dist/はじめにお読みください.txt
-          (cd dist && zip -9 StationWakeUp-Official.zip StationWakeUp-Official.apk はじめにお読みください.txt)
+          # ZIP（日本語ファイル名が Android/Windows で化けない配布）
+          python3 scripts/make-official-zip.py --apk "$SRC" --out dist/StationWakeUp-Official.zip
+          python3 scripts/verify-official-zip.py dist/StationWakeUp-Official.zip
           cp dist/StationWakeUp-Official.zip downloads/StationWakeUp-Official.zip
           cp dist/StationWakeUp-Official.zip public/downloads/StationWakeUp-Official.zip
           ls -lh dist downloads public/downloads

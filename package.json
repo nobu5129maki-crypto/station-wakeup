@@ -7,6 +7,8 @@
     "test": "node scripts/test-speech-match.cjs",
     "icons": "python3 scripts/generate-launcher-icons.py",
     "verify:apk": "bash scripts/verify-launcher-apk.sh",
+    "verify:zip": "python3 scripts/verify-official-zip.py",
+    "zip:official": "python3 scripts/make-official-zip.py",
     "sync": "npm run copy && npx cap sync && node scripts/strip-apk-from-cap.js",
     "android:sync": "npm run copy && npx cap sync android && node scripts/strip-apk-from-cap.js",
     "android:open": "npx cap open android",
