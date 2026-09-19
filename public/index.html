@@ -8,7 +8,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="WakeUp">
     <link rel="manifest" href="./manifest.json">
-    <link rel="apple-touch-icon" href="./icon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
     <title>駅到着アラーム - アナウンス検知</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -933,9 +935,9 @@
 
         /** SW 経由だと相対 icon が破綻することがあるため絶対 URL にする。tag は毎回ユニーク（更新扱いにされず振動しやすい） */
         function buildAlarmNotifyOptions() {
-            let iconUrl = './icon.svg';
+            let iconUrl = './icon.png';
             try {
-                iconUrl = new URL('icon.svg', window.location.href).href;
+                iconUrl = new URL('icon.png', window.location.href).href;
             } catch (e) { /* ignore */ }
             const stamp = Date.now();
             return {

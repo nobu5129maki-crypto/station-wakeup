@@ -11,9 +11,20 @@ for (const f of ['index.html', 'sw.js', 'manifest.json', 'download.html']) {
   }
   fs.copyFileSync(src, path.join(pub, f));
 }
-const icon = path.join(root, 'icon.svg');
-if (fs.existsSync(icon)) {
-  fs.copyFileSync(icon, path.join(pub, 'icon.svg'));
+// アイコンは PNG を配信（Android / iPhone / 通知で共通に使える）
+for (const f of ['icon.png', 'icon.svg']) {
+  const src = path.join(root, f);
+  if (fs.existsSync(src)) fs.copyFileSync(src, path.join(pub, f));
+}
+const iconsSrc = path.join(root, 'icons');
+const iconsDest = path.join(pub, 'icons');
+if (fs.existsSync(iconsSrc)) {
+  fs.mkdirSync(iconsDest, { recursive: true });
+  for (const name of fs.readdirSync(iconsSrc)) {
+    if (name.endsWith('.png')) {
+      fs.copyFileSync(path.join(iconsSrc, name), path.join(iconsDest, name));
+    }
+  }
 }
 
 // Web 配信用 APK（Vercel は public/ を配信）

@@ -5,7 +5,7 @@
     "copy": "node scripts/copy-public.cjs",
     "build": "node scripts/copy-public.cjs",
     "test": "node scripts/test-speech-match.cjs",
-    "icons": "python3 scripts/generate-launcher-icons.py",
+    "icons": "python3 scripts/generate-launcher-icons.py && python3 scripts/generate-png-icons.py",
     "verify:apk": "bash scripts/verify-launcher-apk.sh",
     "verify:zip": "python3 scripts/verify-official-zip.py",
     "zip:official": "python3 scripts/make-official-zip.py",
