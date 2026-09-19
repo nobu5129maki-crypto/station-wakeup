@@ -83,7 +83,7 @@ must(readyBody.includes('muteBeepWindow();') && readyBody.includes('scheduleBeep
 // 準備完了が来ない場合の保険（長すぎるミュートを防ぐ）
 must(java.includes('scheduleBeepWindowEnd(BEEP_WINDOW_FALLBACK_MS)'), '準備完了が来なくても一定時間で音量を戻す');
 // 再開回数を減らす（無音判定を長く）
-must(/COMPLETE_SILENCE_LENGTH_MILLIS, (4000|5000|6000)\)/.test(java), '無音判定を長くして再開回数を減らす');
+must(/COMPLETE_SILENCE_LENGTH_MILLIS, (CLOUD_SILENCE_MS|SEGMENT_SILENCE_MS)\)/.test(java), '無音判定を長くして再開回数を減らす');
 
 // 「待機」表示の点滅を抑える
 must(html.includes('nativeIdleStatusTimer = setTimeout('), '待機表示は長引いた時だけ出す');
@@ -98,6 +98,24 @@ must(java.includes('private boolean fullMute = true;'), 'ネイティブ側の�
 must(java.includes('useSessionMute = fullMute || !isMusicPlayingElsewhere();'), 'ON のときは音楽再生中でも常時ミュート');
 must(java.includes('public void setFullMute(PluginCall call)'), 'ネイティブに setFullMute がある');
 must(java.includes('call.getBoolean("fullMute", true)'), 'start() で fullMute を受け取る');
+
+// --- B: クラウド認識の無音判定を大きく延ばす ---
+must(/CLOUD_SILENCE_MS = (30000|45000|60000);/.test(java), 'クラウド認識の無音判定を 30 秒以上にして再開回数を減らす');
+must(java.includes('EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, CLOUD_SILENCE_MS'), 'クラウド認識で長い無音判定を適用');
+
+// --- C: Android 13+ の連続セッション（端末内認識） ---
+must(java.includes('SpeechRecognizer.isOnDeviceRecognitionAvailable('), '端末内認識の有無を確認する');
+must(java.includes('SpeechRecognizer.createOnDeviceSpeechRecognizer('), '端末内認識を使う');
+must(java.includes('RecognizerIntent.EXTRA_SEGMENTED_SESSION'), '連続セッション（segmented）を使う');
+must(java.includes('public void onSegmentResults(Bundle'), '区切りごとの結果を受け取る');
+must(java.includes('public void onEndOfSegmentedSession()'), 'セッション終了時に再開する');
+must(java.includes('fallbackToCloud();') && java.includes('ERROR_LANGUAGE_UNAVAILABLE'), '日本語が使えない端末はクラウド認識へ自動で戻す');
+must(java.includes('Build.VERSION_CODES.TIRAMISU'), 'Android 13 以降に限定している');
+
+// --- バージョン表示 ---
+must(java.includes('public void getAppInfo(PluginCall call)'), 'ネイティブがバージョン情報を返す');
+must(html.includes('id="appVersionLabel"') && html.includes('P.getAppInfo()'), 'アプリ内にバージョンを表示する');
+must(html.includes("'聞き取り中（公式アプリ・連続）'"), '連続方式で動作中と表示する');
 
 if (failed) {
   console.error('FAILED', failed);

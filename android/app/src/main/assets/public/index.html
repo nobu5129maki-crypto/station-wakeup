@@ -235,6 +235,7 @@
                 <li class="web-only">確実な本体バイブには <a class="text-blue-300 underline" href="./download.html">スマホアプリの入れ方（3ステップ）</a> をご覧ください。</li>
             </ul>
             <p class="web-only text-center text-[11px] text-slate-600">開き方の注意: <code class="font-mono text-slate-500">https</code> または <code class="font-mono text-slate-500">localhost</code>。スマホだけで PC の LAN アドレス（例: 192.168…）だとマイクが使えないことがあります。</p>
+            <p id="appVersionLabel" class="text-center text-[11px] text-slate-600 tabular-nums">Station WakeUp</p>
         </footer>
     </div>
 
@@ -297,6 +298,30 @@
 
         function getHomeScreenPlugin() {
             return getCapacitorPlugin('HomeScreen');
+        }
+
+        /** フッターにバージョンを表示（公式アプリはネイティブから取得、ブラウザ版は表記のみ） */
+        async function showAppVersion() {
+            const el = document.getElementById('appVersionLabel');
+            if (!el) return;
+            if (!isCapacitorNative()) {
+                el.textContent = 'Station WakeUp ブラウザ版';
+                return;
+            }
+            const P = getCapacitorPlugin('StationSpeech');
+            if (!P || typeof P.getAppInfo !== 'function') {
+                el.textContent = 'Station WakeUp アプリ版';
+                return;
+            }
+            try {
+                const info = await P.getAppInfo();
+                const v = info && info.versionName ? `v${info.versionName}` : '';
+                const code = info && info.versionCode ? ` (${info.versionCode})` : '';
+                const mode = info && info.onDeviceAvailable ? '・連続方式対応' : '';
+                el.textContent = `Station WakeUp アプリ ${v}${code}${mode}`.trim();
+            } catch (e) {
+                el.textContent = 'Station WakeUp アプリ版';
+            }
         }
 
         const HOME_PIN_DISMISSED_KEY = 'stationWakeUp_homePinDismissed';
@@ -1412,7 +1437,9 @@
                 if (data && data.status === 'started') {
                     hadRecognitionOnStart = true;
                     if (nativeIdleStatusTimer) { clearTimeout(nativeIdleStatusTimer); nativeIdleStatusTimer = null; }
-                    systemMsg.textContent = '聞き取り中（公式アプリ）';
+                    systemMsg.textContent = data.engine === 'on-device-continuous'
+                        ? '聞き取り中（公式アプリ・連続）'
+                        : '聞き取り中（公式アプリ）';
                     systemMsg.className = 'text-blue-400 font-sans';
                 } else if (data && data.status === 'stopped') {
                     // StationSpeech は自動再開。community は JS 側で再開する
@@ -2009,6 +2036,7 @@
         }
 
         syncFullMuteToggleUI();
+        void showAppVersion();
         if (fullMuteToggleBtn) {
             fullMuteToggleBtn.addEventListener('click', () => {
                 void setFullMuteEnabled(!isFullMuteEnabled());

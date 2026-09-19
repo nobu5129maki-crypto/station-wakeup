@@ -3,7 +3,9 @@ package jp.stationwakeup.app;
 import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
 import android.media.AudioManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -46,6 +48,48 @@ public class StationSpeechPlugin extends Plugin {
     private int maxResults = 5;
     private int restartDelayMs = 450;
     private final Runnable restartRunnable = this::startListeningInternal;
+
+    /**
+     * 認識エンジン。
+     *  - Android 13+ で端末内認識が使えれば「連続セッション（segmented）」を使う。
+     *    セッションを再開しないので途中の効果音が鳴らない。
+     *  - それ以外は従来のクラウド認識。無音判定を長くして再開（効果音）を減らす。
+     */
+    private static final String ENGINE_CONTINUOUS = "on-device-continuous";
+    private static final String ENGINE_CLOUD = "cloud";
+    private String engine = ENGINE_CLOUD;
+    private boolean onDeviceUnavailable = false;
+    /** クラウド認識の無音判定（長いほど再開＝効果音が減る） */
+    private static final int CLOUD_SILENCE_MS = 30000;
+    /** 連続セッションの区切り（結果を確定させる無音）。セッション自体は継続する */
+    private static final int SEGMENT_SILENCE_MS = 5000;
+
+    private boolean canUseOnDevice() {
+        if (onDeviceUnavailable || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return false;
+        }
+        try {
+            return SpeechRecognizer.isOnDeviceRecognitionAvailable(getContext());
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /** 端末内認識が言語未対応などで使えないと分かったら、クラウド認識に切り替える */
+    private void fallbackToCloud() {
+        onDeviceUnavailable = true;
+        engine = ENGINE_CLOUD;
+        try {
+            if (speechRecognizer != null) {
+                speechRecognizer.cancel();
+                speechRecognizer.destroy();
+            }
+        } catch (Exception ignored) {
+            /* ignore */
+        }
+        speechRecognizer = null;
+        isStarting = false;
+    }
 
     /**
      * SpeechRecognizer は開始・終了ごとにシステム音（ピッ）を鳴らす。
@@ -249,8 +293,29 @@ public class StationSpeechPlugin extends Plugin {
             JSObject ret = new JSObject();
             ret.put("ok", true);
             ret.put("beepMuted", sessionMuted ? "session" : "window");
+            ret.put("engine", engine);
             call.resolve(ret);
         });
+    }
+
+    /** アプリのバージョン表示用 */
+    @PluginMethod
+    public void getAppInfo(PluginCall call) {
+        JSObject ret = new JSObject();
+        try {
+            Context ctx = getContext();
+            PackageInfo info = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
+            ret.put("versionName", info.versionName);
+            long code = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? info.getLongVersionCode() : info.versionCode;
+            ret.put("versionCode", code);
+        } catch (Exception e) {
+            ret.put("versionName", "unknown");
+            ret.put("versionCode", 0);
+        }
+        ret.put("androidSdk", Build.VERSION.SDK_INT);
+        ret.put("onDeviceAvailable", canUseOnDevice());
+        ret.put("engine", engine);
+        call.resolve(ret);
     }
 
     @PluginMethod
@@ -287,7 +352,19 @@ public class StationSpeechPlugin extends Plugin {
         if (speechRecognizer != null) {
             return;
         }
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+        if (canUseOnDevice()) {
+            try {
+                speechRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(getContext());
+                engine = ENGINE_CONTINUOUS;
+            } catch (Exception ignored) {
+                speechRecognizer = null;
+                onDeviceUnavailable = true;
+            }
+        }
+        if (speechRecognizer == null) {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+            engine = ENGINE_CLOUD;
+        }
         speechRecognizer.setRecognitionListener(new RecognitionListener() {
             @Override
             public void onReadyForSpeech(Bundle params) {
@@ -317,6 +394,16 @@ public class StationSpeechPlugin extends Plugin {
             public void onError(int error) {
                 isStarting = false;
                 muteBeepWindow();
+
+                // 端末内認識が日本語未対応・未ダウンロード等なら、クラウド認識へ切り替えて続行
+                if (ENGINE_CONTINUOUS.equals(engine) && isOnDeviceUnusableError(error)) {
+                    fallbackToCloud();
+                    if (wantListening) {
+                        scheduleRestart(restartDelayMs);
+                    }
+                    return;
+                }
+
                 JSObject err = new JSObject();
                 err.put("code", error);
                 err.put("message", errorText(error));
@@ -324,6 +411,25 @@ public class StationSpeechPlugin extends Plugin {
 
                 // 権限不足以外は監視継続中なら再開
                 if (wantListening && error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                    scheduleRestart(restartDelayMs);
+                } else {
+                    restoreAudio();
+                    notifyListeningState("stopped");
+                }
+            }
+
+            /** 連続セッション: 区切りごとの確定結果（セッションは続く。効果音は鳴らない） */
+            @Override
+            public void onSegmentResults(Bundle segmentResults) {
+                emitMatches(segmentResults, true);
+            }
+
+            /** 連続セッションの終了（上限時間など）。監視中なら再開 */
+            @Override
+            public void onEndOfSegmentedSession() {
+                isStarting = false;
+                muteBeepWindow();
+                if (wantListening) {
                     scheduleRestart(restartDelayMs);
                 } else {
                     restoreAudio();
@@ -391,11 +497,19 @@ public class StationSpeechPlugin extends Plugin {
             intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
             intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, maxResults);
             intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
-            // 無音判定を長めにして再開（＝開始/終了音）の回数を減らす。判定は途中結果で行う
-            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000);
-            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 4000);
-            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 3000);
-            intent.putExtra("android.speech.extra.DICTATION_MODE", true);
+            if (ENGINE_CONTINUOUS.equals(engine) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // 連続セッション: 無音で区切って結果を確定しつつ、セッション自体は続ける（再開しない＝効果音なし）
+                intent.putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION,
+                        RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS);
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, SEGMENT_SILENCE_MS);
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, SEGMENT_SILENCE_MS);
+            } else {
+                // クラウド認識: 無音判定を大きく延ばして再開（＝開始/終了音）の回数を減らす。判定は途中結果で行う
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, CLOUD_SILENCE_MS);
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, CLOUD_SILENCE_MS);
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, CLOUD_SILENCE_MS);
+                intent.putExtra("android.speech.extra.DICTATION_MODE", true);
+            }
 
             isStarting = true;
             // 開始前からミュート。onReadyForSpeech（開始音）後に戻す。来なければ保険時間で戻す
@@ -426,7 +540,19 @@ public class StationSpeechPlugin extends Plugin {
     private void notifyListeningState(String status) {
         JSObject ret = new JSObject();
         ret.put("status", status);
+        ret.put("engine", engine);
         notifyListeners("listeningState", ret);
+    }
+
+    /** 端末内認識が使えない系のエラー（言語未対応・未ダウンロード・サポート確認不可） */
+    private static boolean isOnDeviceUnusableError(int code) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return false;
+        }
+        return code == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
+                || code == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE
+                || code == SpeechRecognizer.ERROR_CANNOT_CHECK_SUPPORT
+                || code == SpeechRecognizer.ERROR_SERVER_DISCONNECTED;
     }
 
     private static String errorText(int code) {
