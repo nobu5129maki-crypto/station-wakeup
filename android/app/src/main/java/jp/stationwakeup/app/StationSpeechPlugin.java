@@ -1,7 +1,9 @@
 package jp.stationwakeup.app;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -44,6 +46,100 @@ public class StationSpeechPlugin extends Plugin {
     private int maxResults = 5;
     private int restartDelayMs = 450;
     private final Runnable restartRunnable = this::startListeningInternal;
+
+    /**
+     * SpeechRecognizer は開始・終了ごとにシステム音（ピッ）を鳴らす。
+     * 連続認識では数秒おきに鳴ってうるさいため、その音が出る音量経路を黙らせる。
+     *  - 他アプリが音楽を再生していなければ、監視中ずっとミュート（確実）
+     *  - 音楽再生中なら、開始/終了の前後だけ短くミュート（音楽をなるべく止めない）
+     */
+    private AudioManager audioManager;
+    private boolean sessionMuted = false;
+    private boolean windowMuted = false;
+    private boolean useSessionMute = false;
+    private static final long BEEP_WINDOW_MS = 900L;
+    private static final int[] BEEP_STREAMS = {
+        AudioManager.STREAM_MUSIC,
+        AudioManager.STREAM_SYSTEM
+    };
+    private final Runnable unmuteWindowRunnable = this::unmuteBeepWindow;
+
+    private AudioManager audio() {
+        if (audioManager == null) {
+            Context ctx = getContext();
+            if (ctx != null) {
+                audioManager = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+            }
+        }
+        return audioManager;
+    }
+
+    private void adjustStreams(int direction) {
+        AudioManager am = audio();
+        if (am == null) {
+            return;
+        }
+        for (int stream : BEEP_STREAMS) {
+            try {
+                am.adjustStreamVolume(stream, direction, 0);
+            } catch (Exception ignored) {
+                // マナーモード中の一部ストリームは調整不可
+            }
+        }
+    }
+
+    private boolean isMusicPlayingElsewhere() {
+        AudioManager am = audio();
+        try {
+            return am != null && am.isMusicActive();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void beginSessionMuteIfNeeded() {
+        useSessionMute = !isMusicPlayingElsewhere();
+        if (useSessionMute && !sessionMuted) {
+            adjustStreams(AudioManager.ADJUST_MUTE);
+            sessionMuted = true;
+        }
+    }
+
+    private void muteBeepWindow() {
+        if (sessionMuted) {
+            return;
+        }
+        mainHandler.removeCallbacks(unmuteWindowRunnable);
+        if (!windowMuted) {
+            adjustStreams(AudioManager.ADJUST_MUTE);
+            windowMuted = true;
+        }
+    }
+
+    private void scheduleBeepWindowEnd() {
+        if (sessionMuted) {
+            return;
+        }
+        mainHandler.removeCallbacks(unmuteWindowRunnable);
+        mainHandler.postDelayed(unmuteWindowRunnable, BEEP_WINDOW_MS);
+    }
+
+    private void unmuteBeepWindow() {
+        if (windowMuted) {
+            adjustStreams(AudioManager.ADJUST_UNMUTE);
+            windowMuted = false;
+        }
+    }
+
+    /** 監視終了・アラーム・バックグラウンド時は必ず音を戻す */
+    private void restoreAudio() {
+        mainHandler.removeCallbacks(unmuteWindowRunnable);
+        if (sessionMuted || windowMuted) {
+            adjustStreams(AudioManager.ADJUST_UNMUTE);
+        }
+        sessionMuted = false;
+        windowMuted = false;
+    }
 
     private boolean isAvailable() {
         try {
@@ -111,9 +207,11 @@ public class StationSpeechPlugin extends Plugin {
         wantListening = true;
         mainHandler.post(() -> {
             ensureRecognizer();
+            beginSessionMuteIfNeeded();
             startListeningInternal();
             JSObject ret = new JSObject();
             ret.put("ok", true);
+            ret.put("beepMuted", sessionMuted ? "session" : "window");
             call.resolve(ret);
         });
     }
@@ -122,6 +220,8 @@ public class StationSpeechPlugin extends Plugin {
     public void stop(PluginCall call) {
         wantListening = false;
         mainHandler.removeCallbacks(restartRunnable);
+        // アラーム音が消えないよう、先に音量を戻す
+        restoreAudio();
         mainHandler.post(() -> {
             try {
                 if (speechRecognizer != null) {
@@ -131,6 +231,7 @@ public class StationSpeechPlugin extends Plugin {
                 /* ignore */
             }
             isStarting = false;
+            restoreAudio();
             notifyListeningState("stopped");
             JSObject ret = new JSObject();
             ret.put("ok", true);
@@ -168,12 +269,14 @@ public class StationSpeechPlugin extends Plugin {
 
             @Override
             public void onEndOfSpeech() {
-                // 最終結果待ち。onResults / onError で再開する
+                // 終了音が鳴るタイミング。再開後の開始音まで黙らせる
+                muteBeepWindow();
             }
 
             @Override
             public void onError(int error) {
                 isStarting = false;
+                muteBeepWindow();
                 JSObject err = new JSObject();
                 err.put("code", error);
                 err.put("message", errorText(error));
@@ -183,6 +286,7 @@ public class StationSpeechPlugin extends Plugin {
                 if (wantListening && error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                     scheduleRestart(restartDelayMs);
                 } else {
+                    restoreAudio();
                     notifyListeningState("stopped");
                 }
             }
@@ -190,10 +294,12 @@ public class StationSpeechPlugin extends Plugin {
             @Override
             public void onResults(Bundle results) {
                 isStarting = false;
+                muteBeepWindow();
                 emitMatches(results, true);
                 if (wantListening) {
                     scheduleRestart(restartDelayMs);
                 } else {
+                    restoreAudio();
                     notifyListeningState("stopped");
                 }
             }
@@ -252,9 +358,13 @@ public class StationSpeechPlugin extends Plugin {
             intent.putExtra("android.speech.extra.DICTATION_MODE", true);
 
             isStarting = true;
+            // 開始音の直前にミュートし、鳴り終わる頃に戻す（音楽再生中のみ短時間）
+            muteBeepWindow();
             speechRecognizer.startListening(intent);
+            scheduleBeepWindowEnd();
         } catch (Exception e) {
             isStarting = false;
+            unmuteBeepWindow();
             JSObject err = new JSObject();
             err.put("code", -1);
             err.put("message", e.getMessage() != null ? e.getMessage() : "startListening failed");
@@ -308,6 +418,7 @@ public class StationSpeechPlugin extends Plugin {
     protected void handleOnDestroy() {
         wantListening = false;
         mainHandler.removeCallbacks(restartRunnable);
+        restoreAudio();
         try {
             if (speechRecognizer != null) {
                 speechRecognizer.cancel();
@@ -322,7 +433,16 @@ public class StationSpeechPlugin extends Plugin {
 
     @Override
     protected void handleOnPause() {
-        // バックグラウンドでは継続が難しい端末が多いが、監視中は再開予約を残す
+        // 他アプリに切り替えたときに音が消えたままにならないよう戻す
+        restoreAudio();
         super.handleOnPause();
+    }
+
+    @Override
+    protected void handleOnResume() {
+        super.handleOnResume();
+        if (wantListening) {
+            beginSessionMuteIfNeeded();
+        }
     }
 }

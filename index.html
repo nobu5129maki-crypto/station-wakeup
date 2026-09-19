@@ -1738,8 +1738,20 @@
             }
             alarmBox.classList.add('vibrate-active');
 
-            // バイブレーション開始（Android/iPhone 公式アプリは本体バイブ優先）
-            startVibration();
+            // 公式アプリ: 認識を止めて音量ミュートを解除してから鳴らす（アラーム音が消えないように）
+            let alarmOutputStarted = false;
+            const beginAlarmOutput = () => {
+                if (alarmOutputStarted) return;
+                alarmOutputStarted = true;
+                // バイブレーション開始（Android/iPhone 公式アプリは本体バイブ優先）
+                startVibration();
+            };
+            if (usingNativeSpeech) {
+                stopNativeSpeechSession().then(beginAlarmOutput, beginAlarmOutput);
+                setTimeout(beginAlarmOutput, 400);
+            } else {
+                beginAlarmOutput();
+            }
             
             // 視覚的なフィードバック
             statusText.textContent = '検知しました！';
@@ -1855,7 +1867,8 @@
             saveStation(station);
 
             const beginMonitor = () => {
-                primeAlarmAudioFromUserGesture();
+                // 公式アプリは音声出力の準備が不要（無音の出力が「音楽再生中」と誤判定されるのを避ける）
+                if (!isCapacitorNative()) primeAlarmAudioFromUserGesture();
                 if (isVibrateEnabled()) {
                     void pulseAnyVibrate(20);
                 }

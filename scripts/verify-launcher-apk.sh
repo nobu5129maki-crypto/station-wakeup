@@ -13,7 +13,7 @@ printf '%s\n' "$BADGING" | grep -E 'package:|application:|launchable-activity:' 
 
 [[ "$BADGING" == *"launchable-activity: name='jp.stationwakeup.app.MainActivity'"* ]]
 [[ "$BADGING" == *"application-label:'Station WakeUp'"* ]]
-[[ "$BADGING" == *"versionCode='11'"* ]]
+[[ "$BADGING" == *"versionCode='12'"* ]]
 
 RESOURCES=$("$AAPT" dump resources "$APK")
 [[ "$RESOURCES" == *'color/ic_launcher_background: t=0x1d d=0xff1e3a8a'* ]]

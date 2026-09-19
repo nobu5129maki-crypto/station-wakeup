@@ -1,4 +1,4 @@
-const CACHE_NAME = 'station-wakeup-v19';
+const CACHE_NAME = 'station-wakeup-v20';
 const ASSETS = [
   './',
   './index.html',
