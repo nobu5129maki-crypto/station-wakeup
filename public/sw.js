@@ -1,4 +1,4 @@
-const CACHE_NAME = 'station-wakeup-v14';
+const CACHE_NAME = 'station-wakeup-v16';
 const ASSETS = [
   './',
   './index.html',
@@ -23,9 +23,27 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  // APK はキャッシュせず常にネットから（途中で止まった古い応答を避ける）
-  if (url.pathname.endsWith('.apk') || url.pathname.includes('/downloads/')) {
+  // APK/ZIP はキャッシュせず常にネットから
+  if (url.pathname.endsWith('.apk') || url.pathname.endsWith('.zip') || url.pathname.includes('/downloads/')) {
     event.respondWith(fetch(event.request));
+    return;
+  }
+  // HTML はネットワーク優先（古い案内ページが残り続けないようにする）
+  const isHtmlNav =
+    event.request.mode === 'navigate' ||
+    url.pathname.endsWith('.html') ||
+    url.pathname === '/' ||
+    url.pathname.endsWith('/');
+  if (isHtmlNav) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+          return response;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
+    );
     return;
   }
   event.respondWith(

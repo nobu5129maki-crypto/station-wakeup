@@ -20,8 +20,14 @@ eval(extractFunction('escapeRegex'));
 function checkMatchLike(target, text) {
   const normTarget = normalizeForMatch(target);
   const normText = normalizeForMatch(text);
+  if (!normTarget) return false;
   const escaped = escapeRegex(normTarget);
-  const pattern = new RegExp(`(?<!新)${escaped}`);
+  let pattern;
+  if (normTarget.length <= 1) {
+    pattern = new RegExp(`(?<![\\u3400-\\u9fff\\u3005新])${escaped}(?![\\u3400-\\u9fff\\u3005])`);
+  } else {
+    pattern = new RegExp(`(?<!新)${escaped}`);
+  }
   return pattern.test(normText);
 }
 
@@ -30,6 +36,10 @@ const cases = [
   ['品川', 'まもなく品川', true],
   ['お茶の水', '新お茶の水', false],
   ['新宿', '次は、新宿、新宿です', true],
+  ['茅ヶ崎', 'まもなく茅が崎です', true],
+  ['茅ヶ崎', '次は茅ヶ崎', true],
+  ['橋', '日本橋', false],
+  ['橋', '次は橋', true],
 ];
 
 let failed = 0;

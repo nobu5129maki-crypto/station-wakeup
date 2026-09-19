@@ -104,6 +104,14 @@ public class AlarmVibratorPlugin extends Plugin {
     @PluginMethod
     public void start(PluginCall call) {
         try {
+            Vibrator v = getVibrator();
+            if (v == null || !v.hasVibrator()) {
+                JSObject ret = new JSObject();
+                ret.put("ok", false);
+                ret.put("reason", "no_vibrator");
+                call.resolve(ret);
+                return;
+            }
             cancelInternal();
             // [待ち, 振動, 待ち, 振動, ...] を繰り返すアラームパターン
             long[] timings = new long[] { 0, 420, 110, 420, 110, 420, 180, 650, 280 };
@@ -120,6 +128,14 @@ public class AlarmVibratorPlugin extends Plugin {
     @PluginMethod
     public void pulse(PluginCall call) {
         try {
+            Vibrator v = getVibrator();
+            if (v == null || !v.hasVibrator()) {
+                JSObject ret = new JSObject();
+                ret.put("ok", false);
+                ret.put("reason", "no_vibrator");
+                call.resolve(ret);
+                return;
+            }
             Integer duration = call.getInt("duration", 500);
             cancelInternal();
             vibrateOneShot(duration != null ? duration.longValue() : 500L);

@@ -263,7 +263,7 @@
                     const res = await P.canPin();
                     if (res && res.supported === false) {
                         if (hint) {
-                            hint.textContent = 'アプリ一覧で「Station WakeUp」（青い電車アイコン）を長押しし、「ホーム画面に追加」を選んでください。';
+                            hint.textContent = 'アプリ一覧で「Station WakeUp」（当初デザインのアイコン（電車＋ベル））を長押しし、「ホーム画面に追加」を選んでください。';
                         }
                     }
                 } catch (e) { /* ignore */ }
@@ -953,7 +953,11 @@
             const P = getAlarmVibratorPlugin();
             if (!P || typeof P.start !== 'function') return false;
             try {
-                await P.start();
+                const res = await P.start();
+                if (res && res.ok === false) {
+                    nativeAlarmVibrateActive = false;
+                    return false;
+                }
                 nativeAlarmVibrateActive = true;
                 return true;
             } catch (e) {
@@ -1521,12 +1525,13 @@
         /** 漢字・カタカナ・ひらがなの表記ゆれを吸収して比較用に正規化 */
         function normalizeForMatch(str) {
             let s = typeof str.normalize === 'function' ? str.normalize('NFKC') : str;
+            // ヶ/ヵ はカタカナ変換前に処理（変換後は ゖ/ゕ になり置換漏れする）
+            s = s.replace(/[ヶゖ]/g, 'が');
+            s = s.replace(/[ヵゕ]/g, 'か');
             // カタカナ → ひらがな（Unicode範囲で一括変換）
             s = s.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
             // よくある表記ゆれ（音声認識で漢字→ひらがなになりやすいもの）
             s = s.replace(/御/g, 'お');
-            s = s.replace(/ヶ/g, 'が');
-            s = s.replace(/ヵ/g, 'か');
             return s;
         }
 
@@ -1540,9 +1545,15 @@
             if (!target || !isListening) return;
             const normTarget = normalizeForMatch(target);
             const normText = normalizeForMatch(text);
-            // 部分一致だが、「新」+ 駅名（例: 新お茶の水）は別駅なので除外
+            if (!normTarget) return;
             const escaped = escapeRegex(normTarget);
-            const pattern = new RegExp(`(?<!新)${escaped}`);
+            // 「新」+ 駅名は別駅。1文字ターゲットは前後の漢字複合（日本橋・橋本）を除外
+            let pattern;
+            if (normTarget.length <= 1) {
+                pattern = new RegExp(`(?<![\\u3400-\\u9fff\\u3005新])${escaped}(?![\\u3400-\\u9fff\\u3005])`);
+            } else {
+                pattern = new RegExp(`(?<!新)${escaped}`);
+            }
             if (pattern.test(normText)) {
                 triggerAlarm(text);
             }
