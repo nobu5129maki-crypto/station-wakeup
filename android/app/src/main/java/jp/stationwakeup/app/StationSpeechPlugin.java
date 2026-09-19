@@ -57,6 +57,8 @@ public class StationSpeechPlugin extends Plugin {
     private boolean sessionMuted = false;
     private boolean windowMuted = false;
     private boolean useSessionMute = false;
+    /** 完全消音: 音楽再生中でも監視中はずっとミュートする（初期値 ON） */
+    private boolean fullMute = true;
     /** 開始音は onReadyForSpeech の時点で鳴る。準備完了後この時間は黙らせる */
     private static final long BEEP_WINDOW_MS = 800L;
     /** onReadyForSpeech が来ない場合の保険（ここまで待って戻す） */
@@ -101,11 +103,41 @@ public class StationSpeechPlugin extends Plugin {
     }
 
     private void beginSessionMuteIfNeeded() {
-        useSessionMute = !isMusicPlayingElsewhere();
+        useSessionMute = fullMute || !isMusicPlayingElsewhere();
         if (useSessionMute && !sessionMuted) {
+            mainHandler.removeCallbacks(unmuteWindowRunnable);
             adjustStreams(AudioManager.ADJUST_MUTE);
             sessionMuted = true;
+            windowMuted = false;
         }
+    }
+
+    /** 監視中に完全消音の ON/OFF が変わったとき、即座にモードを切り替える */
+    private void applyFullMuteChange() {
+        if (!wantListening) {
+            return;
+        }
+        if (fullMute) {
+            beginSessionMuteIfNeeded();
+        } else if (sessionMuted && isMusicPlayingElsewhere()) {
+            // 音楽を聴きたい人向け: 常時ミュートをやめて短時間モードへ
+            adjustStreams(AudioManager.ADJUST_UNMUTE);
+            sessionMuted = false;
+            useSessionMute = false;
+        }
+    }
+
+    @PluginMethod
+    public void setFullMute(PluginCall call) {
+        Boolean enabled = call.getBoolean("enabled", true);
+        fullMute = enabled == null || enabled;
+        mainHandler.post(() -> {
+            applyFullMuteChange();
+            JSObject ret = new JSObject();
+            ret.put("fullMute", fullMute);
+            ret.put("beepMuted", sessionMuted ? "session" : "window");
+            call.resolve(ret);
+        });
     }
 
     private void muteBeepWindow() {
@@ -206,6 +238,8 @@ public class StationSpeechPlugin extends Plugin {
         maxResults = mr != null ? Math.max(1, Math.min(5, mr)) : 5;
         Integer delay = call.getInt("restartDelayMs", 450);
         restartDelayMs = delay != null ? Math.max(200, Math.min(3000, delay)) : 450;
+        Boolean fm = call.getBoolean("fullMute", true);
+        fullMute = fm == null || fm;
 
         wantListening = true;
         mainHandler.post(() -> {

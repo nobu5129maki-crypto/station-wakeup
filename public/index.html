@@ -180,6 +180,19 @@
                     <p id="hapticTestHint" class="web-only text-center text-[11px] text-slate-500 mt-2 leading-snug">タップすると、使える方式で振動（または代替フィードバック）を試します。</p>
                 </div>
 
+                <!-- 公式アプリのみ：聞き取り中の効果音対策 -->
+                <div id="fullMuteSection" class="native-only mt-5 pt-4 border-t border-slate-700">
+                    <div class="flex items-center justify-between gap-3">
+                        <label class="block text-sm font-medium text-sky-200/90" for="fullMuteToggleBtn">完全消音<span class="text-slate-400 font-normal">（監視中は他の音も止める）</span></label>
+                        <button type="button" id="fullMuteToggleBtn" role="switch" aria-checked="true"
+                            class="shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold border transition-colors bg-sky-600/90 border-sky-400/50 text-white">
+                            <span class="inline-block w-2 h-2 rounded-full bg-white"></span>
+                            <span id="fullMuteToggleText">ON</span>
+                        </button>
+                    </div>
+                    <p id="fullMuteHint" class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">ON：聞き取り中の「ピッ」を完全に消します。その間、音楽などの他アプリの音も止まります（アラーム音は鳴ります）。<br>OFF：音楽を聴きながら使えます。効果音は短く消音しますが、機種により小さく残ることがあります。</p>
+                </div>
+
                 <div class="mt-3">
                     <p id="savedLabel" class="text-xs text-slate-500 mb-2 hidden">よく使う駅（タップで選択 / ×で削除）</p>
                     <div id="savedStationsWrap" class="flex flex-wrap gap-2"></div>
@@ -796,6 +809,43 @@
             try { localStorage.setItem(VIBRATE_ENABLED_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
             syncVibrateToggleUI();
             updateVibrateCapabilityUI();
+        }
+
+        /** 完全消音（監視中は他アプリの音も止めて効果音をゼロにする）。初期値 ON */
+        const FULL_MUTE_KEY = 'stationWakeUp_fullMute';
+        const fullMuteToggleBtn = document.getElementById('fullMuteToggleBtn');
+        const fullMuteToggleText = document.getElementById('fullMuteToggleText');
+
+        function isFullMuteEnabled() {
+            try {
+                const raw = localStorage.getItem(FULL_MUTE_KEY);
+                if (raw == null) return true;
+                return raw !== '0' && raw !== 'false';
+            } catch (e) {
+                return true;
+            }
+        }
+
+        function syncFullMuteToggleUI() {
+            if (!fullMuteToggleBtn || !fullMuteToggleText) return;
+            const on = isFullMuteEnabled();
+            fullMuteToggleBtn.setAttribute('aria-checked', on ? 'true' : 'false');
+            fullMuteToggleText.textContent = on ? 'ON' : 'OFF';
+            fullMuteToggleBtn.className = on
+                ? 'shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold border transition-colors bg-sky-600/90 border-sky-400/50 text-white'
+                : 'shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold border transition-colors bg-slate-700 border-slate-500 text-slate-300';
+        }
+
+        async function setFullMuteEnabled(on) {
+            try { localStorage.setItem(FULL_MUTE_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+            syncFullMuteToggleUI();
+            // 監視中に切り替えた場合は、次の再開を待たずネイティブに反映
+            if (isListening && usingNativeSpeech) {
+                const P = getStationSpeechPlugin();
+                if (P && typeof P.setFullMute === 'function') {
+                    try { await P.setFullMute({ enabled: on }); } catch (e) { /* ignore */ }
+                }
+            }
         }
 
         function syncVibrateToggleUI() {
@@ -1443,7 +1493,7 @@
                 }
                 await ensureNativeSpeechListeners(backend);
                 if (backend.kind === 'station') {
-                    await P.start({ language: 'ja-JP', maxResults: 5, restartDelayMs: 450 });
+                    await P.start({ language: 'ja-JP', maxResults: 5, restartDelayMs: 450, fullMute: isFullMuteEnabled() });
                 } else {
                     // community: popup false + partialResults。セッション終了ごとに再開
                     try { await P.stop(); } catch (e) { /* ignore */ }
@@ -1955,6 +2005,13 @@
             vibrateToggleBtn.addEventListener('click', () => {
                 setVibrateEnabled(!isVibrateEnabled());
                 if (vibrateTestResult) vibrateTestResult.classList.add('hidden');
+            });
+        }
+
+        syncFullMuteToggleUI();
+        if (fullMuteToggleBtn) {
+            fullMuteToggleBtn.addEventListener('click', () => {
+                void setFullMuteEnabled(!isFullMuteEnabled());
             });
         }
 

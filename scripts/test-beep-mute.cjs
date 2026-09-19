@@ -88,6 +88,17 @@ must(/COMPLETE_SILENCE_LENGTH_MILLIS, (4000|5000|6000)\)/.test(java), '無音判
 // 「待機」表示の点滅を抑える
 must(html.includes('nativeIdleStatusTimer = setTimeout('), '待機表示は長引いた時だけ出す');
 
+// --- 完全消音スイッチ（初期値 ON） ---
+must(html.includes('id="fullMuteToggleBtn"') && html.includes('aria-checked="true"'), '完全消音スイッチが UI にある（初期 ON）');
+must(/const FULL_MUTE_KEY = 'stationWakeUp_fullMute'/.test(html), '完全消音の設定を保存する');
+must(/if \(raw == null\) return true;[\s\S]{0,120}FULL_MUTE|function isFullMuteEnabled\(\) \{[\s\S]{0,160}if \(raw == null\) return true;/.test(html), '未設定時は完全消音 ON');
+must(html.includes('fullMute: isFullMuteEnabled()'), '監視開始時にネイティブへ完全消音の設定を渡す');
+must(html.includes('P.setFullMute({ enabled: on })'), '監視中の切替も即時反映する');
+must(java.includes('private boolean fullMute = true;'), 'ネイティブ側の初期値も ON');
+must(java.includes('useSessionMute = fullMute || !isMusicPlayingElsewhere();'), 'ON のときは音楽再生中でも常時ミュート');
+must(java.includes('public void setFullMute(PluginCall call)'), 'ネイティブに setFullMute がある');
+must(java.includes('call.getBoolean("fullMute", true)'), 'start() で fullMute を受け取る');
+
 if (failed) {
   console.error('FAILED', failed);
   process.exit(1);
