@@ -23,7 +23,6 @@
         }
         .vibrate-active {
             animation: shake 0.5s infinite;
-            background-color: #ef4444 !important;
         }
         @keyframes shake {
             0% { transform: translate(1px, 1px) rotate(0deg); }
@@ -970,6 +969,40 @@
         }
 
         let isListening = false;
+        /** マイク拒否など、停止後もエラー文を「停止」で上書きしない */
+        let keepStatusOnEnd = false;
+
+        /** idle | listening | detected。classList.replace は元の色が無いと失敗するため、色を組み直す */
+        function setToggleAppearance(mode) {
+            toggleBtn.classList.remove(
+                'pulse',
+                'bg-blue-600', 'bg-red-600', 'bg-green-600',
+                'hover:bg-blue-500', 'hover:bg-red-500', 'hover:bg-green-500'
+            );
+            if (mode === 'listening') {
+                toggleBtn.classList.add('bg-red-600', 'hover:bg-red-500', 'pulse');
+                statusText.textContent = '監視中...';
+            } else if (mode === 'detected') {
+                toggleBtn.classList.add('bg-green-600', 'hover:bg-green-500');
+                statusText.textContent = '検知しました！';
+            } else {
+                toggleBtn.classList.add('bg-blue-600', 'hover:bg-blue-500');
+                statusText.textContent = '監視を開始する';
+            }
+        }
+
+        function failMonitoring(message) {
+            keepStatusOnEnd = true;
+            isListening = false;
+            clearSpeechTimers();
+            setToggleAppearance('idle');
+            systemMsg.textContent = message;
+            systemMsg.className = 'text-red-500 font-sans';
+            void stopNativeSpeechSession();
+            if (recognition) {
+                try { recognition.stop(); } catch (e) { /* ignore */ }
+            }
+        }
         let recognition = null;
         let restartTimer = null;
         let retryStartTimer = null;
@@ -1465,9 +1498,8 @@
                     }, 3000);
                     return;
                 }
-                if (/権限|permission|マイク/i.test(msg)) {
-                    systemMsg.textContent = 'マイクが許可されていません。アプリ設定でマイクを許可してください。';
-                    systemMsg.className = 'text-red-500 font-sans';
+                if (/権限|permission|許可されていません/i.test(msg)) {
+                    failMonitoring('マイクが許可されていません。アプリ設定でマイクを許可してください。');
                     return;
                 }
                 systemMsg.textContent = msg;
@@ -1499,22 +1531,14 @@
                     const perm = await P.requestPermissions();
                     const mic = perm && (perm.microphone || perm.speechRecognition);
                     if (mic && mic !== 'granted') {
-                        systemMsg.textContent = 'マイク権限が必要です。設定から許可してください。';
-                        systemMsg.className = 'text-red-500 font-sans';
-                        if (fromUserClick) {
-                            isListening = false;
-                            statusText.textContent = '監視を開始する';
-                            toggleBtn.classList.remove('pulse');
-                            toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
-                        }
+                        failMonitoring('マイク権限が必要です。設定から許可してください。');
                         return false;
                     }
                 }
                 if (typeof P.available === 'function') {
                     const av = await P.available();
                     if (av && av.available === false) {
-                        systemMsg.textContent = 'この端末では音声認識を利用できません（Google音声サービス等を確認）。';
-                        systemMsg.className = 'text-red-500 font-sans';
+                        failMonitoring('この端末では音声認識を利用できません（Google音声サービス等を確認）。');
                         return false;
                     }
                 }
@@ -1538,13 +1562,8 @@
                 return true;
             } catch (e) {
                 console.warn('native speech start failed', e);
-                systemMsg.textContent = '音声認識を開始できませんでした: ' + (e && e.message ? e.message : e);
-                systemMsg.className = 'text-red-500 font-sans';
                 if (fromUserClick) {
-                    isListening = false;
-                    statusText.textContent = '監視を開始する';
-                    toggleBtn.classList.remove('pulse');
-                    toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
+                    failMonitoring('音声認識を開始できませんでした: ' + (e && e.message ? e.message : e));
                 } else if (backend.kind === 'community' && isListening) {
                     scheduleCommunitySpeechRestart(backend);
                 }
@@ -1600,8 +1619,9 @@
             rec.onend = () => {
                 if (isListening) {
                     clearTimeout(retryStartTimer);
-                    systemMsg.textContent = "再接続中…";
-                    systemMsg.className = "text-yellow-500 font-sans";
+                    // 無音で切れるのは通常動作。黄色の「再接続中」にすると故障に見える
+                    systemMsg.textContent = '聞き取り中';
+                    systemMsg.className = 'text-blue-400 font-sans';
                     clearTimeout(restartTimer);
                     if (Date.now() - lastInstanceCreatedAt >= INSTANCE_TTL_MS) {
                         recognition = createRecognition();
@@ -1610,9 +1630,9 @@
                     restartTimer = setTimeout(() => {
                         if (isListening) tryStartRecognition(0, { fromUserClick: false });
                     }, RESTART_MS);
-                } else {
-                    systemMsg.textContent = "停止";
-                    systemMsg.className = "text-slate-400 font-sans";
+                } else if (!keepStatusOnEnd) {
+                    systemMsg.textContent = '停止';
+                    systemMsg.className = 'text-slate-400 font-sans';
                 }
             };
 
@@ -1621,28 +1641,41 @@
                     return;
                 }
                 if (isListening && event.error === 'not-allowed' && hadRecognitionOnStart) {
-                    systemMsg.textContent = "再接続中…";
-                    systemMsg.className = "text-yellow-500 font-sans";
+                    systemMsg.textContent = '聞き取り中';
+                    systemMsg.className = 'text-blue-400 font-sans';
                     return;
                 }
                 if (isListening && event.error === 'network') {
-                    systemMsg.textContent = "ネットワークの不調です。自動で再接続します…";
-                    systemMsg.className = "text-yellow-500 font-sans";
+                    systemMsg.textContent = 'ネットワークの不調です。自動で再接続します…';
+                    systemMsg.className = 'text-yellow-500 font-sans';
                     return;
                 }
-                if (isListening) {
-                    let msg = `Error: ${event.error}`;
-                    if (event.error === 'not-allowed') {
-                        msg = 'マイクが許可されていません。HTTPS または localhost の URL で開き直してください（画面上の「開き方」を参照）。';
-                    } else if (event.error === 'audio-capture') {
-                        msg = 'マイクが使用できません。他のアプリが使用中か確認してください。';
-                    } else if (event.error === 'service-not-allowed') {
-                        msg = '音声認識サービスに接続できません。しばらくしてから再試行するか、通信環境を確認してください。';
-                    }
-                    systemMsg.textContent = msg;
-                    systemMsg.className = "text-red-500 font-sans";
+                if (!isListening) {
+                    console.warn('Speech Recognition Error:', event.error);
+                    return;
+                }
+                let msg = `Error: ${event.error}`;
+                let fatal = false;
+                if (event.error === 'not-allowed') {
+                    fatal = true;
+                    msg = 'マイクが許可されていません。ブラウザのサイト設定でマイクを許可するか、HTTPS で開き直してください。';
+                } else if (event.error === 'audio-capture') {
+                    fatal = true;
+                    msg = 'マイクが使用できません。他のアプリが使用中か確認してください。';
+                } else if (event.error === 'service-not-allowed') {
+                    fatal = true;
+                    msg = '音声認識サービスに接続できません。しばらくしてから再試行するか、通信環境を確認してください。';
+                } else if (event.error === 'language-not-supported') {
+                    fatal = true;
+                    msg = 'このブラウザは日本語の音声認識に対応していません。公式アプリ版を使ってください。';
                 }
                 console.warn('Speech Recognition Error:', event.error);
+                if (fatal) {
+                    failMonitoring(msg);
+                    return;
+                }
+                systemMsg.textContent = msg;
+                systemMsg.className = 'text-red-500 font-sans';
             };
         }
 
@@ -1669,12 +1702,7 @@
                         tryStartRecognition(attempt + 1, opts);
                     }, 350 + attempt * 200);
                 } else if (fromUserClick) {
-                    isListening = false;
-                    statusText.textContent = '監視を開始する';
-                    toggleBtn.classList.remove('pulse');
-                    toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
-                    systemMsg.textContent = '音声認識を開始できませんでした。ページを一度再読み込みするか、しばらくしてからもう一度お試しください。';
-                    systemMsg.className = "text-red-500 font-sans";
+                    failMonitoring('音声認識を開始できませんでした。ページを一度再読み込みするか、しばらくしてからもう一度お試しください。');
                 } else {
                     recognition = createRecognition();
                     systemMsg.textContent = "認識の再接続に失敗しました。自動で再試行しています…";
@@ -1777,23 +1805,76 @@
             return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
+        function isKanjiChar(ch) {
+            return /[\u3400-\u9fff\u3005々]/.test(ch);
+        }
+
+        /** 「次は」「まもなく」など、駅名ではなく合図として入れる語 */
+        function isCuePhrase(normTarget) {
+            return normTarget === 'まもなく'
+                || normTarget === 'もうすぐ'
+                || normTarget === '次は'
+                || normTarget === 'つぎは'
+                || normTarget === '次'
+                || normTarget === 'つぎ'
+                || normTarget === '到着';
+        }
+
+        function boundaryBefore(prev) {
+            if (!prev) return true;
+            // 直前が漢字なら別駅（東新宿・新横浜・西船橋・新お茶の水）
+            return !isKanjiChar(prev[prev.length - 1]);
+        }
+
+        function boundaryAfter(rest) {
+            if (!rest) return true;
+            if (/^[\s、。，．！？!?,.・\u3000「」『』（）()\-−]/.test(rest)) return true;
+            if (rest.startsWith('駅')) return boundaryAfter(rest.slice(1));
+            if (/^(です|でござ|でしょう|だった|だ)/.test(rest)) return true;
+            if (/^[にへをはとやもねよ]/.test(rest)) return true;
+            if (rest.startsWith('が')) {
+                const n = rest[1] || '';
+                if (!n || /[\s、。，．！？!?,.・\u3000]/.test(n)) return true;
+                if (/^[にへをはとやもねよ]/.test(n)) return true;
+                return false;
+            }
+            if (rest.startsWith('の')) return /^の(次|後|前|方|ほう|ため)/.test(rest);
+            return false;
+        }
+
+        function boundedIncludes(normTarget, normText) {
+            let from = 0;
+            while (from <= normText.length - normTarget.length) {
+                const i = normText.indexOf(normTarget, from);
+                if (i < 0) return false;
+                const end = i + normTarget.length;
+                if (boundaryBefore(normText.slice(0, i)) && boundaryAfter(normText.slice(end))) {
+                    return true;
+                }
+                from = i + 1;
+            }
+            return false;
+        }
+
+        function textMatchesTarget(target, text) {
+            let normTarget = normalizeForMatch(String(target || '').trim());
+            const normText = normalizeForMatch(String(text || ''));
+            if (!normTarget || !normText) return false;
+            if (isCuePhrase(normTarget)) {
+                if (normTarget.length > 1) return normText.includes(normTarget);
+                return boundedIncludes(normTarget, normText);
+            }
+            if (normTarget.endsWith('駅') && normTarget.length > 1) {
+                normTarget = normTarget.slice(0, -1);
+            }
+            if (!normTarget) return false;
+            return boundedIncludes(normTarget, normText);
+        }
+
         function checkMatch(text) {
             const target = targetInput.value.trim();
             if (!target || !isListening) return;
-            const normTarget = normalizeForMatch(target);
-            const normText = normalizeForMatch(text);
-            if (!normTarget) return;
-            const escaped = escapeRegex(normTarget);
-            // 「新」+ 駅名は別駅。1文字ターゲットは前後の漢字複合（日本橋・橋本）を除外
-            let pattern;
-            if (normTarget.length <= 1) {
-                pattern = new RegExp(`(?<![\\u3400-\\u9fff\\u3005新])${escaped}(?![\\u3400-\\u9fff\\u3005])`);
-            } else {
-                pattern = new RegExp(`(?<!新)${escaped}`);
-            }
-            if (pattern.test(normText)) {
-                triggerAlarm(text);
-            }
+            if (textMatchesTarget(target, text)) triggerAlarm(text);
         }
 
         function triggerAlarm(detectedText) {
@@ -1837,10 +1918,7 @@
                 beginAlarmOutput();
             }
             
-            // 視覚的なフィードバック
-            statusText.textContent = '検知しました！';
-            toggleBtn.classList.replace('bg-red-600', 'bg-green-600');
-            toggleBtn.classList.remove('pulse');
+            setToggleAppearance('detected');
         }
 
         async function startVibration() {
@@ -1964,13 +2042,12 @@
 
                 clearSpeechTimers();
                 hadRecognitionOnStart = false;
+                keepStatusOnEnd = false;
                 lastInstanceCreatedAt = Date.now();
                 isListening = true;
                 transcriptLog.innerHTML = '';
 
-                statusText.textContent = '監視中...';
-                toggleBtn.classList.replace('bg-blue-600', 'bg-red-600');
-                toggleBtn.classList.add('pulse');
+                setToggleAppearance('listening');
 
                 if (backend) {
                     systemMsg.textContent = 'マイク準備中…';
@@ -1991,6 +2068,7 @@
 
         function stopListening() {
             alarmShowing = false;
+            keepStatusOnEnd = false;
             isListening = false;
             clearSpeechTimers();
             void stopNativeSpeechSession();
@@ -2001,10 +2079,7 @@
             alarmBox.classList.remove('vibrate-active');
             if (alarmFlashBg) alarmFlashBg.classList.add('hidden');
             stopVibration();
-            statusText.textContent = '監視を開始する';
-            toggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
-            toggleBtn.classList.replace('bg-green-600', 'bg-blue-600');
-            toggleBtn.classList.remove('pulse');
+            setToggleAppearance('idle');
         }
 
         toggleBtn.addEventListener('click', () => {
