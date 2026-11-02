@@ -136,10 +136,10 @@
         <!-- Setting Section -->
         <div class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700">
             <div class="mb-6">
-                <label class="block text-sm font-medium mb-2 text-blue-300">検知する駅名 (例: 品川、次、まもなく)</label>
+                <label class="block text-sm font-medium mb-2 text-blue-300">検知する駅名 (例: 品川、東京、新宿)</label>
                 <input type="text" id="targetStation" placeholder="駅名を入力" 
                     class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg">
-                <p class="text-xs text-slate-500 mt-2">※「次は」「まもなく」などを入れると検知しやすくなります</p>
+                <p class="text-xs text-slate-500 mt-2">※降りる駅の名前を入れてください。アナウンスがその駅名を言ったときに知らせます。</p>
 
                 <div class="mt-5 pt-4 border-t border-slate-700">
                     <label for="alarmVolumeRange" id="alarmVolumeTitle" class="block text-sm font-medium text-amber-200/90 mb-2">アラーム音量（起こす強さ）</label>
@@ -1809,15 +1809,16 @@
             return /[\u3400-\u9fff\u3005々]/.test(ch);
         }
 
-        /** 「次は」「まもなく」など、駅名ではなく合図として入れる語 */
+        /** 駅名ではなく、車内アナウンスの合図だけのもの */
         function isCuePhrase(normTarget) {
-            return normTarget === 'まもなく'
-                || normTarget === 'もうすぐ'
-                || normTarget === '次は'
-                || normTarget === 'つぎは'
-                || normTarget === '次'
-                || normTarget === 'つぎ'
-                || normTarget === '到着';
+            const core = normTarget.replace(/[\s、。，．！？!?,.・\u3000「」『』（）()\-−]/g, '');
+            return core === 'まもなく'
+                || core === 'もうすぐ'
+                || core === '次は'
+                || core === 'つぎは'
+                || core === '次'
+                || core === 'つぎ'
+                || core === '到着';
         }
 
         function boundaryBefore(prev) {
@@ -1860,10 +1861,7 @@
             let normTarget = normalizeForMatch(String(target || '').trim());
             const normText = normalizeForMatch(String(text || ''));
             if (!normTarget || !normText) return false;
-            if (isCuePhrase(normTarget)) {
-                if (normTarget.length > 1) return normText.includes(normTarget);
-                return boundedIncludes(normTarget, normText);
-            }
+            if (isCuePhrase(normTarget)) return false;
             if (normTarget.endsWith('駅') && normTarget.length > 1) {
                 normTarget = normTarget.slice(0, -1);
             }
