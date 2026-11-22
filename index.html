@@ -202,6 +202,10 @@
                 <span id="statusIcon">🎤</span>
                 <span id="statusText">監視を開始する</span>
             </button>
+            <button type="button" id="sampleAnnounceBtn" class="web-only w-full mt-3 bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-3 rounded-xl border border-slate-600 transition-all text-base">
+                サンプルのアナウンスで試す
+            </button>
+            <p class="web-only text-[11px] text-slate-500 text-center leading-relaxed">マイクが使えないときは、入れた駅名がアナウンスされたものとして、到着アラームまで進みます。</p>
         </div>
 
         <!-- Transcript Log -->
@@ -1770,12 +1774,13 @@
         }, 800);
 
         function updateLog(text, isFinal) {
-            const firstChild = transcriptLog.firstChild;
+            const firstChild = transcriptLog.firstElementChild;
             if (firstChild && !firstChild.dataset.final) {
                 firstChild.textContent = `> ${text}`;
                 if (isFinal) {
                     firstChild.dataset.final = "true";
-                    firstChild.classList.replace('text-slate-400', 'text-slate-200');
+                    firstChild.classList.remove('text-slate-400');
+                    firstChild.classList.add('text-slate-200');
                 }
             } else {
                 const p = document.createElement('p');
@@ -1784,7 +1789,9 @@
                 if (isFinal) p.dataset.final = "true";
                 transcriptLog.prepend(p);
             }
-            if (transcriptLog.childNodes.length > 25) transcriptLog.removeChild(transcriptLog.lastChild);
+            while (transcriptLog.children.length > 25) {
+                transcriptLog.removeChild(transcriptLog.lastElementChild);
+            }
         }
 
         /** 漢字・カタカナ・ひらがなの表記ゆれを吸収して比較用に正規化 */
@@ -2087,6 +2094,29 @@
                 startListening();
             }
         });
+
+        const sampleAnnounceBtn = document.getElementById('sampleAnnounceBtn');
+        if (sampleAnnounceBtn) {
+            sampleAnnounceBtn.addEventListener('click', () => {
+                const station = targetInput.value.trim();
+                if (!station) {
+                    alert('先に駅名を入力してください。');
+                    return;
+                }
+                saveStation(station);
+                primeAlarmAudioFromUserGesture();
+                const phrase = `まもなく、${station}、${station}です`;
+                const placeholder = transcriptLog.querySelector('p.italic');
+                if (placeholder) placeholder.remove();
+                isListening = true;
+                checkMatch(phrase);
+                updateLog(phrase, true);
+                if (!alarmShowing) {
+                    isListening = false;
+                    alert('この駅名ではサンプルを照合できませんでした。合図の言葉だけ（次は、まもなく）は入れず、駅名を入れてください。');
+                }
+            });
+        }
 
         stopAlarmBtn.addEventListener('click', () => {
             stopListening();
